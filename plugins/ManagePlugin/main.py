@@ -12,7 +12,7 @@ from utils.plugin_manager import plugin_manager
 class ManagePlugin(PluginBase):
     description = "插件管理器"
     author = "xxxbot"
-    version = "1.1.0"
+    version = "1.2.0"
 
     def __init__(self):
         super().__init__()
@@ -102,27 +102,57 @@ class ManagePlugin(PluginBase):
 
         elif command[0] == "重载所有插件":
             loaded_plugins, failed_plugins = await plugin_manager.reload_all_plugins(bot)
-            
+
             message_parts = []
-            
+
             if loaded_plugins:
                 loaded_plugins_str = '\n'.join(loaded_plugins)
                 message_parts.append(f"✅插件重载成功：\n{loaded_plugins_str}")
             else:
                 message_parts.append("❌没有成功重载任何插件")
-            
+
             if failed_plugins:
                 failed_plugins_str = '\n'.join(failed_plugins)
                 message_parts.append(f"❌插件重载失败：\n{failed_plugins_str}")
-                
+
             await bot.send_text_message(message["FromWxid"], "\n\n".join(message_parts))
 
         elif command[0] == "插件列表":
             plugin_list = plugin_manager.get_plugin_info()
 
-            plugin_stat = [["插件名称", "是否启用"]]
+            plugin_stat = [["插件名称", "是否启用", "优先级", "优先级来源"]]
+
+            # 添加日志输出，帮助调试
+            from loguru import logger
+            logger.debug(f"插件列表数据: {plugin_list}")
+
             for plugin in plugin_list:
-                plugin_stat.append([plugin['name'], "✅" if plugin['enabled'] else "🚫"])
+                # 确定优先级来源
+                has_global_priority = plugin.get('has_global_priority', False)
+                priority_source = "全局" if has_global_priority else "装饰器"
+
+                # 获取优先级值
+                priority = plugin.get('priority', 50)
+
+                # 记录每个插件的优先级信息
+                logger.debug(f"插件 {plugin['name']} 的优先级: {priority}, 来源: {priority_source}")
+
+                # 如果是装饰器优先级，获取方法优先级详情
+                if not has_global_priority:
+                    from utils.event_manager import EventManager
+                    method_priorities = EventManager.get_method_priorities(plugin['name'])
+                    if method_priorities:
+                        priorities = [method_info['priority'] for method_info in method_priorities.values()]
+                        if priorities:
+                            max_priority = max(priorities)
+                            logger.debug(f"插件 {plugin['name']} 的最高方法优先级: {max_priority}")
+
+                plugin_stat.append([
+                    plugin['name'],
+                    "✅" if plugin['enabled'] else "🚫",
+                    priority,  # 显示优先级
+                    priority_source  # 显示优先级来源
+                ])
 
             table = str(tabulate(plugin_stat, headers="firstrow", tablefmt="simple"))
 
@@ -131,10 +161,27 @@ class ManagePlugin(PluginBase):
         elif command[0] == "插件信息":
             attemt = plugin_manager.get_plugin_info(plugin_name)
             if isinstance(attemt, dict):
+                # 确定优先级来源
+                has_global_priority = attemt.get('has_global_priority', False)
+                priority_source = "全局配置" if has_global_priority else "装饰器"
+                priority = attemt.get('priority', 50)
+
+                # 获取方法优先级详情
+                method_priorities_info = ""
+                if not has_global_priority:
+                    from utils.event_manager import EventManager
+                    method_priorities = EventManager.get_method_priorities(attemt['name'])
+                    if method_priorities:
+                        method_priorities_info = "\n\n方法优先级详情:"
+                        for method_name, method_info in method_priorities.items():
+                            method_priorities_info += f"\n- {method_name}: {method_info['priority']} ({method_info['event_type']})"
+
                 output = (f"插件名称: {attemt['name']}\n"
                           f"插件描述: {attemt['description']}\n"
                           f"插件作者: {attemt['author']}\n"
-                          f"插件版本: {attemt['version']}")
+                          f"插件版本: {attemt['version']}\n"
+                          f"优先级: {priority}\n"
+                          f"优先级来源: {priority_source}{method_priorities_info}")  # 显示优先级信息和来源
 
                 await bot.send_text_message(message["FromWxid"], output)
             else:

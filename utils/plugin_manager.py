@@ -26,7 +26,7 @@ class PluginManager:
         try:
             with open("main_config.toml", "rb") as f:
                 main_config = tomllib.load(f)
-            
+
             # 安全地获取 'disabled-plugins' 配置
             # 使用 .get("XYBot", {}).get("disabled-plugins") 防止因键不存在而引发 KeyError
             disabled_plugins_setting = main_config.get("XYBot", {}).get("disabled-plugins")
@@ -82,8 +82,8 @@ class PluginManager:
             # 捕获初始化过程中其他可能的异常
             logger.error(f"初始化 PluginManager 时读取或解析配置发生未知错误: {e_init}。禁用插件列表将初始化为空。")
             # self.excluded_plugins 已经是 []
-        
-        
+
+
 
     async def load_plugin(self, bot: WechatAPIClient, plugin_class: Type[PluginBase],
                           is_disabled: bool = False) -> bool:
@@ -103,7 +103,9 @@ class PluginManager:
                 "version": plugin_class.version,
                 "enabled": False,
                 "class": plugin_class,
-                "is_ai_platform": getattr(plugin_class, 'is_ai_platform', False)  # 检查是否为AI平台插件
+                "is_ai_platform": getattr(plugin_class, 'is_ai_platform', False),  # 检查是否为AI平台插件
+                "priority": getattr(plugin_class, 'priority', 50),  # 记录插件优先级
+                "has_global_priority": getattr(plugin_class, 'has_global_priority', False)  # 记录是否设置了全局优先级
             }
 
             # 如果插件被禁用则不加载
@@ -111,12 +113,23 @@ class PluginManager:
                 return False
 
             plugin = plugin_class()
+            # 记录插件优先级信息
+            priority = getattr(plugin, 'priority', 50)
+            has_global_priority = getattr(plugin, 'has_global_priority', False)
+
+            if has_global_priority:
+                logger.info(f"加载插件 {plugin_name}，使用全局优先级: {priority}")
+            else:
+                logger.info(f"加载插件 {plugin_name}，使用装饰器优先级")
+
             EventManager.bind_instance(plugin)
             await plugin.on_enable(bot)
             await plugin.async_init()
             self.plugins[plugin_name] = plugin
             self.plugin_classes[plugin_name] = plugin_class
             self.plugin_info[plugin_name]["enabled"] = True
+            self.plugin_info[plugin_name]["priority"] = priority  # 更新优先级信息
+            self.plugin_info[plugin_name]["has_global_priority"] = has_global_priority  # 更新全局优先级标志
             return True
         except:
             logger.error(f"加载插件时发生错误: {traceback.format_exc()}")
@@ -185,7 +198,7 @@ class PluginManager:
 
         if failed_plugins:
             logger.warning(f"以下插件加载失败: {', '.join(failed_plugins)}，但不影响其他插件的加载")
-            
+
         return loaded_plugins
 
     async def load_plugin_from_directory(self, bot: WechatAPIClient, plugin_name: str) -> bool:
@@ -318,7 +331,7 @@ class PluginManager:
             # 从目录重新加载插件，不加载禁用的插件
             loaded_plugins = []
             failed_plugins = []
-            
+
             # 从plugins目录批量加载插件
             for dirname in os.listdir("plugins"):
                 if os.path.isdir(f"plugins/{dirname}") and os.path.exists(f"plugins/{dirname}/main.py"):
@@ -327,7 +340,7 @@ class PluginManager:
                         for name, obj in inspect.getmembers(module):
                             if inspect.isclass(obj) and issubclass(obj, PluginBase) and obj != PluginBase:
                                 is_disabled = obj.__name__ in self.excluded_plugins
-                                
+
                                 if not is_disabled and await self.load_plugin(bot, obj, is_disabled=is_disabled):
                                     loaded_plugins.append(obj.__name__)
                     except Exception as e:
@@ -337,7 +350,7 @@ class PluginManager:
 
             if failed_plugins:
                 logger.warning(f"以下插件重载失败: {', '.join(failed_plugins)}，但不影响其他插件的加载")
-                
+
             return loaded_plugins, failed_plugins
 
         except:
@@ -355,14 +368,92 @@ class PluginManager:
         """
         # 创建一个可以JSON序列化的信息副本
         def clean_plugin_info(info):
+            plugin_name = info.get("name", "unknown")
+            has_global_priority = info.get("has_global_priority", False)
+
+            # 获取插件的装饰器优先级
+            decorator_priority = 50  # 默认值
+
+            # 如果没有设置全局优先级，获取装饰器优先级
+            if not has_global_priority:
+                from utils.event_manager import EventManager
+                method_priorities = EventManager.get_method_priorities(plugin_name)
+
+                # 如果有方法优先级记录，则使用
+                if method_priorities:
+                    # 记录所有方法的优先级，用于调试
+                    from loguru import logger
+                    logger.debug(f"插件 {plugin_name} 的方法优先级: {method_priorities}")
+
+                    # 找出最高优先级的方法
+                    if method_priorities:
+                        # 提取所有方法的优先级值
+                        priorities = [method_info['priority'] for method_info in method_priorities.values()]
+                        if priorities:
+                            max_priority = max(priorities)
+                            decorator_priority = max_priority
+
+                            # 记录使用的优先级
+                            logger.debug(f"插件 {plugin_name} 使用最高装饰器优先级: {decorator_priority}")
+
+                # 如果插件未加载或没有方法优先级记录，尝试从插件类中获取
+                elif plugin_name in self.plugin_classes:
+                    # 获取插件类
+                    plugin_class = self.plugin_classes[plugin_name]
+
+                    # 检查插件类中的方法，查找装饰器优先级
+                    from loguru import logger
+                    max_priority = 50  # 默认优先级
+
+                    for method_name in dir(plugin_class):
+                        if method_name.startswith('__'):
+                            continue
+
+                        method = getattr(plugin_class, method_name)
+                        if hasattr(method, '_priority'):
+                            priority = getattr(method, '_priority', 50)
+                            if priority > max_priority:
+                                max_priority = priority
+
+                    decorator_priority = max_priority
+                    logger.debug(f"插件 {plugin_name} 从类定义中获取最高装饰器优先级: {decorator_priority}")
+
+                # 如果插件未加载且没有类定义，尝试从插件信息中获取
+                elif "class" in info:
+                    plugin_class = info["class"]
+
+                    # 检查插件类中的方法，查找装饰器优先级
+                    from loguru import logger
+                    max_priority = 50  # 默认优先级
+
+                    for method_name in dir(plugin_class):
+                        if method_name.startswith('__'):
+                            continue
+
+                        method = getattr(plugin_class, method_name)
+                        if hasattr(method, '_priority'):
+                            priority = getattr(method, '_priority', 50)
+                            if priority > max_priority:
+                                max_priority = priority
+
+                    decorator_priority = max_priority
+                    logger.debug(f"插件 {plugin_name} 从插件信息中获取最高装饰器优先级: {decorator_priority}")
+
+            # 确定最终优先级
+            final_priority = decorator_priority
+            if has_global_priority:
+                final_priority = info.get("priority", 50)
+
             result = {
-                "id": info.get("name", "unknown"),
-                "name": info.get("name", "unknown"),
+                "id": plugin_name,
+                "name": plugin_name,
                 "description": info.get("description", ""),
                 "author": info.get("author", ""),
                 "version": info.get("version", "1.0.0"),
                 "enabled": info.get("enabled", False),
-                "is_ai_platform": info.get("is_ai_platform", False)  # 添加AI平台标识
+                "is_ai_platform": info.get("is_ai_platform", False),  # 添加AI平台标识
+                "priority": final_priority,  # 使用全局优先级或装饰器最高优先级
+                "has_global_priority": has_global_priority  # 添加全局优先级标志
             }
             return result
 
@@ -396,22 +487,10 @@ class PluginManager:
 
     def get_ai_platform_plugins(self) -> List[dict]:
         """获取所有AI平台插件信息"""
-        # 使用与 get_plugin_info 相同的格式化方法
-        def clean_plugin_info(info):
-            result = {
-                "id": info.get("name", "unknown"),
-                "name": info.get("name", "unknown"),
-                "description": info.get("description", ""),
-                "author": info.get("author", ""),
-                "version": info.get("version", "1.0.0"),
-                "enabled": info.get("enabled", False),
-                "is_ai_platform": info.get("is_ai_platform", False)
-            }
-            return result
-
-        # 过滤出AI平台插件
-        return [clean_plugin_info(info) for info in self.plugin_info.values()
-                if info.get("is_ai_platform", False)]
+        # 使用与 get_plugin_info 相同的格式化方法，但不重复实现
+        # 直接调用 get_plugin_info 方法获取所有插件，然后过滤出AI平台插件
+        all_plugins = self.get_plugin_info()
+        return [plugin for plugin in all_plugins if plugin.get("is_ai_platform", False)]
 
 
 plugin_manager = PluginManager()

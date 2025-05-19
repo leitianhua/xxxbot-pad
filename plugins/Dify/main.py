@@ -63,7 +63,7 @@ class ModelConfig:
 class Dify(PluginBase):
     description = "Dify插件"
     author = "老夏的金库"
-    version = "1.5.2"  # 更新版本号 - 修复换行
+    version = "1.5.1"  # 更新版本号 - 增加图片引用功能
     is_ai_platform = True  # 标记为 AI 平台插件
 
     def __init__(self):
@@ -550,6 +550,8 @@ class Dify(PluginBase):
             if command in self.commands:
                 query = query[len(command):].strip()
             if query:
+                # 获取用户当前使用的模型
+                model = self.get_user_model(message["SenderWxid"])
                 if await self._check_point(bot, message, model):
                     # 检查是否有唤醒词或触发词
                     model, processed_query, is_switch = self.get_model_from_message(query, message["SenderWxid"])
@@ -564,8 +566,10 @@ class Dify(PluginBase):
             if command in self.commands:
                 query = query[len(command):].strip()
             if query:
-                if await self._check_point(bot, message):
-                    await self.dify(bot, message, query, files=files)
+                # 获取用户当前使用的模型
+                model = self.get_user_model(message["SenderWxid"])
+                if await self._check_point(bot, message, model):
+                    await self.dify(bot, message, query, files=files, specific_model=model)
         return
 
         if content:
@@ -610,7 +614,9 @@ class Dify(PluginBase):
                 if command in self.commands:
                     query = query[len(command):].strip()
                 if query:
-                    if await self._check_point(bot, message):
+                    # 获取用户当前使用的模型
+                    model = self.get_user_model(message["SenderWxid"])
+                    if await self._check_point(bot, message, model):
                         # 检查是否有唤醒词或触发词
                         model, processed_query, is_switch = self.get_model_from_message(query, message["SenderWxid"])
                         if is_switch:
@@ -1973,64 +1979,22 @@ class Dify(PluginBase):
                 paragraphs = text.split("//n")
                 logger.info(f"检测到 //n 分隔符，将消息分为 {len(paragraphs)} 段发送")
 
-                # 检查是否是引用消息
-                should_quote = False
+                # 不再使用引用消息，直接使用普通文本回复
+                # 这些变量保留但不再使用
+                quoted_msg_id = ""
+                quoted_wxid = ""
+                quoted_content = ""
+                quoted_nickname = ""
+                should_quote = False  # 始终设置为False，不使用引用回复
 
-                # 首先检查是否有Quote字段（XML引用消息）
-                if message.get("Quote"):
-                    quote_info = message.get("Quote", {})
-                    quoted_msg_id = quote_info.get("MsgId", "") or quote_info.get("NewMsgId", "")
-                    quoted_wxid = quote_info.get("FromWxid", "")
-                    quoted_content = quote_info.get("Content", "")
-                    quoted_nickname = quote_info.get("Nickname", "")
-
-                    # 如果没有昵称，尝试获取
-                    if not quoted_nickname:
-                        try:
-                            quoted_nickname = await bot.get_nickname(quoted_wxid) or "未知用户"
-                        except:
-                            quoted_nickname = "未知用户"
-
-                    logger.info(f"检测到XML引用消息，引用MsgId={quoted_msg_id}, 引用人={quoted_nickname}")
-
-                    # 如果有消息ID且内容不是太长，使用引用回复
-                    if quoted_msg_id and quoted_wxid and quoted_content and len(quoted_content) <= 100:
-                        should_quote = True
-                        logger.info(f"将使用引用消息回复，引用MsgId={quoted_msg_id}")
-                else:
-                    # 使用普通消息信息
-                    quoted_msg_id = message.get("MsgId", "")
-                    quoted_wxid = message.get("SenderWxid", "")
-                    quoted_content = message.get("Content", "")
-
-                    # 尝试获取引用消息的发送者昵称
-                    try:
-                        quoted_nickname = await bot.get_nickname(quoted_wxid) or "未知用户"
-                    except:
-                        quoted_nickname = "未知用户"
-
-                    # 如果有消息ID且内容不是太长，使用引用回复
-                    if quoted_msg_id and quoted_wxid and quoted_content and len(quoted_content) <= 100:
-                        should_quote = True
-                        logger.info(f"将使用普通消息引用回复，引用MsgId={quoted_msg_id}")
+                logger.info("使用普通文本回复，不使用引用回复")
 
                 for i, paragraph in enumerate(paragraphs):
                     if paragraph.strip():
                         logger.debug(f"发送第 {i+1}/{len(paragraphs)} 段消息，长度: {len(paragraph.strip())} 字符")
 
-                        # 只对第一段使用引用回复
-                        if should_quote and i == 0:
-                            await self.send_quote_message(
-                                bot,
-                                message["FromWxid"],
-                                paragraph.strip(),
-                                quoted_msg_id,
-                                quoted_wxid,
-                                quoted_nickname,
-                                quoted_content[:100]  # 截断过长的引用内容
-                            )
-                        else:
-                            await bot.send_text_message(message["FromWxid"], paragraph.strip())
+                        # 直接发送普通文本消息，不使用引用回复
+                        await bot.send_text_message(message["FromWxid"], paragraph.strip())
 
                         # 添加短暂延迟，避免消息发送过快
                         if i < len(paragraphs) - 1:  # 如果不是最后一段
@@ -3514,94 +3478,17 @@ class Dify(PluginBase):
     async def send_quote_message(self, bot: WechatAPIClient, to_wxid: str, content: str, quoted_msg_id: str,
                               quoted_wxid: str, quoted_nickname: str, quoted_content: str):
         """
-        发送引用消息
+        发送引用消息 - 现在直接发送普通文本消息
 
         参数:
             bot: WechatAPIClient实例
             to_wxid: 消息接收人的wxid
             content: 要发送的新消息内容
-            quoted_msg_id: 被引用消息的newMsgId
-            quoted_wxid: 被引用消息发送者的wxid
-            quoted_nickname: 被引用消息发送者的昵称
-            quoted_content: 被引用的消息内容
+            quoted_msg_id: 被引用消息的newMsgId (不再使用)
+            quoted_wxid: 被引用消息发送者的wxid (不再使用)
+            quoted_nickname: 被引用消息发送者的昵称 (不再使用)
+            quoted_content: 被引用的消息内容 (不再使用)
         """
-        # 构建引用消息的XML
-        quote_xml = f'''<appmsg appid="" sdkver="0">
-            <title>{content}</title>
-            <des></des>
-            <action></action>
-            <type>57</type>
-            <showtype>0</showtype>
-            <soundtype>0</soundtype>
-            <mediatagname></mediatagname>
-            <messageext></messageext>
-            <messageaction></messageaction>
-            <content></content>
-            <contentattr>0</contentattr>
-            <url></url>
-            <lowurl></lowurl>
-            <dataurl></dataurl>
-            <lowdataurl></lowdataurl>
-            <songalbumurl></songalbumurl>
-            <songlyric></songlyric>
-            <appattach>
-                <totallen>0</totallen>
-                <attachid></attachid>
-                <emoticonmd5></emoticonmd5>
-                <fileext></fileext>
-                <cdnthumbaeskey></cdnthumbaeskey>
-                <aeskey></aeskey>
-            </appattach>
-            <extinfo></extinfo>
-            <sourceusername></sourceusername>
-            <sourcedisplayname></sourcedisplayname>
-            <thumburl></thumburl>
-            <md5></md5>
-            <statextstr></statextstr>
-            <directshare>0</directshare>
-            <refermsg>
-                <type>1</type>
-                <svrid>{quoted_msg_id}</svrid>
-                <fromusr>{quoted_wxid}</fromusr>
-                <chatusr>{bot.wxid}</chatusr>
-                <displayname>{quoted_nickname}</displayname>
-                <content>{quoted_content}</content>
-            </refermsg>
-        </appmsg>'''
-
-        # 压缩XML结构为单行（去除XML结构中的换行和多余空格，但保留消息内容中的换行）
-        # 注意：不要使用简单的replace('\n', '')，这会导致消息内容中的换行也被移除
-        # 只压缩XML标签之间的空白，保留<title>和<content>标签内的格式
-        import re
-        # 先保存原始内容
-        title_match = re.search(r'<title>(.*?)</title>', quote_xml, re.DOTALL)
-        content_match = re.search(r'<content>(.*?)</content>', quote_xml, re.DOTALL)
-
-        # 提取需要保留格式的内容
-        title_content = title_match.group(1) if title_match else ""
-        ref_content = content_match.group(1) if content_match else ""
-
-        # 压缩整个XML
-        quote_xml = quote_xml.replace('\n', '').replace('    ', '')
-
-        # 如果原始内容中有换行，恢复它们
-        if title_match and '\n' in title_content:
-            # 在压缩后的XML中找到title标签内容并替换回原始内容
-            quote_xml = re.sub(r'<title>(.*?)</title>', f'<title>{title_content}</title>', quote_xml)
-
-        if content_match and '\n' in ref_content:
-            # 在压缩后的XML中找到content标签内容并替换回原始内容
-            quote_xml = re.sub(r'<content>(.*?)</content>', f'<content>{ref_content}</content>', quote_xml)
-
-        # 使用send_app_message发送引用消息
-        # type=57表示这是一个引用消息
-        try:
-            logger.info(f"发送引用消息: 引用MsgId={quoted_msg_id}, 引用人={quoted_nickname}")
-            result = await bot.send_app_message(to_wxid, quote_xml, 57)
-            return result
-        except Exception as e:
-            logger.error(f"发送引用消息失败: {e}")
-            logger.error(traceback.format_exc())
-            # 如果发送引用消息失败，回退到普通消息
-            logger.info("回退到发送普通文本消息")
-            return await bot.send_text_message(to_wxid, content)
+        # 直接发送普通文本消息，不使用引用格式
+        logger.info(f"发送普通文本消息，内容: {content[:30]}...")
+        return await bot.send_text_message(to_wxid, content)

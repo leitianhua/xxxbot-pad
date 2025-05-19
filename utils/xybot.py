@@ -14,12 +14,8 @@ from loguru import logger
 from WechatAPI import WechatAPIClient
 from WechatAPI.Client.protect import protector
 from database.messsagDB import MessageDB
-from database.message_counter import get_instance as get_message_counter  # 导入消息计数器
 from database.contacts_db import update_contact_in_db, get_contact_from_db
 from utils.event_manager import EventManager
-
-# 获取消息计数器实例
-message_counter = get_message_counter()
 
 
 class XYBot:
@@ -29,13 +25,6 @@ class XYBot:
         self.nickname = None
         self.alias = None
         self.phone = None
-
-        # 添加一个字典，用于跟踪最近的响应消息
-        self.recent_responses = {}
-
-        # 添加一个方法，用于记录发送的消息
-        self._original_send_text_message = bot_client.send_text_message
-        bot_client.send_text_message = self._track_send_text_message
 
         # 打印当前工作目录，便于调试
         import os
@@ -99,50 +88,6 @@ class XYBot:
         self.nickname = nickname
         self.alias = alias
         self.phone = phone
-
-    async def _track_send_text_message(self, to_wxid, content, at_list=None):
-        """跟踪发送的文本消息
-
-        Args:
-            to_wxid: 接收消息的wxid
-            content: 消息内容
-            at_list: @的用户列表
-
-        Returns:
-            原始方法的返回值
-        """
-        # 记录发送的消息
-        self.recent_responses[to_wxid] = content
-
-        # 如果内容包含"正在获取"或"请稍等"，记录到最近处理的消息中
-        if isinstance(content, str) and ("正在获取" in content or "请稍等" in content):
-            logger.debug(f"记录到处理中的消息: {to_wxid} - {content[:30]}...")
-
-            # 我们不再尝试访问当前任务的 message 属性，因为这可能导致错误
-            # 相反，我们只记录响应消息，让 check_group_wakeup_word 方法检查它
-
-        # 确保 at_list 参数的类型正确
-        if at_list is not None:
-            if isinstance(at_list, (str, list)):
-                # 类型正确，不做任何处理
-                pass
-            else:
-                # 类型不正确，转换为空列表
-                logger.warning(f"at_list 参数类型不正确: {type(at_list)}，将其设置为空列表")
-                at_list = []
-
-        # 调用原始方法
-        try:
-            return await self._original_send_text_message(to_wxid, content, at_list)
-        except ValueError as e:
-            # 如果出现 ValueError，可能是 at_list 参数类型不正确
-            if "Argument 'at' should be str or list" in str(e):
-                logger.warning(f"at_list 参数类型不正确，尝试转换为空列表: {e}")
-                # 再次尝试，使用空列表作为 at_list 参数
-                return await self._original_send_text_message(to_wxid, content, [])
-            else:
-                # 其他 ValueError，重新抛出
-                raise
 
     def is_logged_in(self):
         """检查机器人是否已登录
@@ -500,114 +445,75 @@ class XYBot:
             logger.error(f"更新联系人信息时发生异常: {str(e)}")
 
     async def process_message(self, message: Dict[str, Any]):
-        """处理收到的消息"""
-        # 记录消息统计
-        try:
-            # 使用全局消息计数器实例
-            global message_counter
+        """处理接收到的消息"""
 
-            # 更新消息计数
-            message_counter.increment()
-            logger.debug(f"已记录一条消息")
-        except Exception as e:
-            logger.error(f"消息统计失败: {e}")
+        msg_type = message.get("MsgType")
 
-        # 原有的消息处理逻辑
-        try:
-            # 先对消息进行白名单/黑名单检查
-            FromWxid = message.get("FromWxid", None)
-            SenderWxid = message.get("SenderWxid", None)
-            Type = message.get("Type", 0)
-            Content = message.get("Content", "")
+        # 预处理消息
+        # 确保 FromWxid 始终是字符串，默认为空字符串
+        from_user = message.get("FromUserName", {})
+        if isinstance(from_user, dict):
+            message["FromWxid"] = from_user.get("string", "")
+        else:
+            message["FromWxid"] = str(from_user) if from_user else ""
+        message.pop("FromUserName", None)
 
-            # 确保Content是字符串
-            if isinstance(Content, dict) and "string" in Content:
-                Content = Content["string"]
-            elif not isinstance(Content, str):
-                Content = str(Content)
+        # 确保 ToWxid 始终是字符串，默认为空字符串
+        to_wxid = message.get("ToWxid", {})
+        if isinstance(to_wxid, dict):
+            message["ToWxid"] = to_wxid.get("string", "")
+        else:
+            message["ToWxid"] = str(to_wxid) if to_wxid else ""
 
-            # 新增：保存到消息数据库
-            try:
-                await self.msg_db.save_message(
-                    msg_id=message.get("ID", 0),
-                    sender_wxid=SenderWxid or "",
-                    from_wxid=FromWxid or "",
-                    msg_type=Type,
-                    content=Content,
-                    is_group=True if "@chatroom" in (FromWxid or "") else False
+        # 处理一下自己发的消息
+        to_wxid = message.get("ToWxid", "")
+        if message.get("FromWxid") == self.wxid and isinstance(to_wxid, str) and to_wxid.endswith("@chatroom"):
+            message["FromWxid"], message["ToWxid"] = message["ToWxid"], message["FromWxid"]
+
+        # 异步更新发送者联系人信息
+        from_wxid = message.get("FromWxid", "")
+        if from_wxid and from_wxid != self.wxid:
+            # 如果是群聊，只更新群聊本身信息
+            if from_wxid.endswith("@chatroom"):
+                logger.info(f"开始异步更新群聊信息: {from_wxid}")
+                update_task = asyncio.create_task(self.update_contact_info(from_wxid))
+                # 添加回调以记录完成状态
+                update_task.add_done_callback(
+                    lambda t: logger.info(f"完成群聊信息更新: {from_wxid}, 状态: {'success' if not t.exception() else f'error: {t.exception()}'}")
                 )
-            except Exception as e:
-                logger.error(f"保存消息到数据库失败: {e}")
+            # 如果是私聊，更新发送者信息
+            elif not from_wxid.endswith("@chatroom"):
+                logger.info(f"开始异步更新发送者联系人信息: {from_wxid}")
+                update_task = asyncio.create_task(self.update_contact_info(from_wxid))
+                # 添加回调以记录完成状态
+                update_task.add_done_callback(
+                    lambda t: logger.info(f"完成发送者联系人信息更新: {from_wxid}, 状态: {'success' if not t.exception() else f'error: {t.exception()}'}")
+                )
 
-            msg_type = message.get("MsgType")
-
-            # 预处理消息
-            # 确保 FromWxid 始终是字符串，默认为空字符串
-            from_user = message.get("FromUserName", {})
-            if isinstance(from_user, dict):
-                message["FromWxid"] = from_user.get("string", "")
+        # 根据消息类型触发不同的事件
+        if msg_type == 1:  # 文本消息
+            await self.process_text_message(message)
+        elif msg_type == 3:  # 图片消息
+            await self.process_image_message(message)
+        elif msg_type == 34:  # 语音消息
+            await self.process_voice_message(message)
+        elif msg_type == 43:  # 视频消息
+            await self.process_video_message(message)
+        elif msg_type == 47:  # 表情消息
+            await self.process_emoji_message(message)
+        elif msg_type == 49:  # xml消息
+            await self.process_xml_message(message)
+        elif msg_type == 10002:  # 系统消息
+            await self.process_system_message(message)
+        elif msg_type == 37:  # 好友请求
+            if self.ignore_protection or not protector.check(14400):
+                await EventManager.emit("friend_request", self.bot, message)
             else:
-                message["FromWxid"] = str(from_user) if from_user else ""
-            message.pop("FromUserName", None)
-
-            # 确保 ToWxid 始终是字符串，默认为空字符串
-            to_wxid = message.get("ToWxid", {})
-            if isinstance(to_wxid, dict):
-                message["ToWxid"] = to_wxid.get("string", "")
-            else:
-                message["ToWxid"] = str(to_wxid) if to_wxid else ""
-
-            # 处理一下自己发的消息
-            to_wxid = message.get("ToWxid", "")
-            if message.get("FromWxid") == self.wxid and isinstance(to_wxid, str) and to_wxid.endswith("@chatroom"):
-                message["FromWxid"], message["ToWxid"] = message["ToWxid"], message["FromWxid"]
-
-            # 异步更新发送者联系人信息
-            from_wxid = message.get("FromWxid", "")
-            if from_wxid and from_wxid != self.wxid:
-                # 如果是群聊，只更新群聊本身信息
-                if from_wxid.endswith("@chatroom"):
-                    logger.info(f"开始异步更新群聊信息: {from_wxid}")
-                    update_task = asyncio.create_task(self.update_contact_info(from_wxid))
-                    # 添加回调以记录完成状态
-                    update_task.add_done_callback(
-                        lambda t: logger.info(f"完成群聊信息更新: {from_wxid}, 状态: {'success' if not t.exception() else f'error: {t.exception()}'}")
-                    )
-                # 如果是私聊，更新发送者信息
-                elif not from_wxid.endswith("@chatroom"):
-                    logger.info(f"开始异步更新发送者联系人信息: {from_wxid}")
-                    update_task = asyncio.create_task(self.update_contact_info(from_wxid))
-                    # 添加回调以记录完成状态
-                    update_task.add_done_callback(
-                        lambda t: logger.info(f"完成发送者联系人信息更新: {from_wxid}, 状态: {'success' if not t.exception() else f'error: {t.exception()}'}")
-                    )
-
-            # 根据消息类型触发不同的事件
-            if msg_type == 1:  # 文本消息
-                await self.process_text_message(message)
-            elif msg_type == 3:  # 图片消息
-                await self.process_image_message(message)
-            elif msg_type == 34:  # 语音消息
-                await self.process_voice_message(message)
-            elif msg_type == 43:  # 视频消息
-                await self.process_video_message(message)
-            elif msg_type == 47:  # 表情消息
-                await self.process_emoji_message(message)
-            elif msg_type == 49:  # xml消息
-                await self.process_xml_message(message)
-            elif msg_type == 10002:  # 系统消息
-                await self.process_system_message(message)
-            elif msg_type == 37:  # 好友请求
-                if self.ignore_protection or not protector.check(14400):
-                    await EventManager.emit("friend_request", self.bot, message)
-                else:
-                    logger.warning("风控保护: 新设备登录后4小时内请挂机")
-            elif msg_type == 51:
-                pass
-            else:
-                logger.info("未知的消息类型: {}", message)
-        except Exception as e:
-            logger.error(f"处理消息时发生异常: {e}")
+                logger.warning("风控保护: 新设备登录后4小时内请挂机")
+        elif msg_type == 51:
+            pass
+        else:
+            logger.info("未知的消息类型: {}", message)
 
     async def process_text_message(self, message: Dict[str, Any]):
         """处理文本消息"""
@@ -644,19 +550,12 @@ class XYBot:
             ats = []
         message["Ats"] = ats if ats and ats[0] != "" else []
 
-        # 确保content是字符串
-        content = message["Content"]
-        if isinstance(content, dict) and "string" in content:
-            content = content["string"]
-        elif not isinstance(content, str):
-            content = str(content)
-
         await self.msg_db.save_message(
             msg_id=int(message.get("MsgId", 0)),
             sender_wxid=message["SenderWxid"],
             from_wxid=message["FromWxid"],
             msg_type=int(message.get("MsgType", 0)),
-            content=content,
+            content=message["Content"],
             is_group=message["IsGroup"]
         )
 
@@ -681,19 +580,8 @@ class XYBot:
                     message.get("MsgId", ""), message["FromWxid"],
                     message["SenderWxid"], message["Ats"], message["Content"])
 
-        # 检查是否是群聊消息
-        is_group = message.get("IsGroup", False)
-
         # 检查是否需要处理该消息（群聊唤醒词检查）
         should_process = await self.check_group_wakeup_word(message)
-
-        # 如果是群聊消息且启用了群聊唤醒词功能，但消息没有通过唤醒词触发，则不处理
-        if is_group and self.enable_group_wakeup and not message.get("OriginalContent"):
-            logger.debug(f"群聊消息未通过唤醒词触发，不处理: {message.get('Content')}")
-            return
-
-        # 初始化 LastResponse 字段，用于跟踪插件的响应
-        message["LastResponse"] = ""
 
         # 群聊消息和私聊消息都处理
         # 无论是否@机器人，都处理消息
@@ -729,19 +617,12 @@ class XYBot:
                     message.get("MsgId", ""), message["FromWxid"],
                     message["SenderWxid"], message["Content"])
 
-        # 确保content是字符串
-        content = message.get("MsgSource", "")
-        if isinstance(content, dict) and "string" in content:
-            content = content["string"]
-        elif not isinstance(content, str):
-            content = str(content)
-
         await self.msg_db.save_message(
             msg_id=int(message.get("MsgId", 0)),
             sender_wxid=message["SenderWxid"],
             from_wxid=message["FromWxid"],
             msg_type=int(message.get("MsgType", 0)),
-            content=content,
+            content=message.get("MsgSource", ""),
             is_group=message["IsGroup"]
         )
 
@@ -901,19 +782,12 @@ class XYBot:
                     message.get("MsgId", ""), message["FromWxid"],
                     message["SenderWxid"], message["Content"])
 
-        # 确保content是字符串
-        content = message["Content"]
-        if isinstance(content, dict) and "string" in content:
-            content = content["string"]
-        elif not isinstance(content, str):
-            content = str(content)
-
         await self.msg_db.save_message(
             msg_id=int(message.get("MsgId", 0)),
             sender_wxid=message["SenderWxid"],
             from_wxid=message["FromWxid"],
             msg_type=int(message.get("MsgType", 0)),
-            content=content,
+            content=message["Content"],
             is_group=message["IsGroup"]
         )
 
@@ -930,9 +804,7 @@ class XYBot:
                 return
 
             if voiceurl and length:
-                # 确保 MsgId 是字符串类型
-                msg_id = str(message["MsgId"]) if message["MsgId"] is not None else ""
-                silk_base64 = await self.bot.download_voice(msg_id, voiceurl, length)
+                silk_base64 = await self.bot.download_voice(message["MsgId"], voiceurl, length)
                 message["Content"] = await self.bot.silk_base64_to_wav_byte(silk_base64)
         else:
             silk_base64 = message.get("ImgBuf", {}).get("buffer", "")
@@ -970,19 +842,12 @@ class XYBot:
                     message.get("MsgId", ""), message["FromWxid"],
                     message["ActualUserWxid"], message["Content"])
 
-        # 确保content是字符串
-        content = message["Content"]
-        if isinstance(content, dict) and "string" in content:
-            content = content["string"]
-        elif not isinstance(content, str):
-            content = str(content)
-
         await self.msg_db.save_message(
             msg_id=int(message.get("MsgId", 0)),
             sender_wxid=message["ActualUserWxid"],
             from_wxid=message["FromWxid"],
             msg_type=int(message.get("MsgType", 0)),
-            content=content,
+            content=message["Content"],
             is_group=message["IsGroup"]
         )
 
@@ -1017,20 +882,13 @@ class XYBot:
                 message["FromWxid"] = message["ToWxid"]
             message["IsGroup"] = False
 
-        # 确保content是字符串
-        content = message["Content"]
-        if isinstance(content, dict) and "string" in content:
-            content = content["string"]
-        elif not isinstance(content, str):
-            content = str(content)
-
         # 保存消息到数据库（即使解析失败也保存）
         await self.msg_db.save_message(
             msg_id=int(message.get("MsgId", 0)),
             sender_wxid=message["SenderWxid"],
             from_wxid=message["FromWxid"],
             msg_type=int(message.get("MsgType", 0)),
-            content=content,
+            content=message["Content"],
             is_group=message["IsGroup"]
         )
 
@@ -1211,19 +1069,12 @@ class XYBot:
                     message.get("MsgId", ""), message["FromWxid"],
                     message["SenderWxid"], message["Content"])
 
-        # 确保content是字符串
-        content = message["Content"]
-        if isinstance(content, dict) and "string" in content:
-            content = content["string"]
-        elif not isinstance(content, str):
-            content = str(content)
-
         await self.msg_db.save_message(
             msg_id=int(message.get("MsgId", 0)),
             sender_wxid=message["SenderWxid"],
             from_wxid=message["FromWxid"],
             msg_type=int(message.get("MsgType", 0)),
-            content=content,
+            content=message["Content"],
             is_group=message["IsGroup"]
         )
 
@@ -1253,19 +1104,12 @@ class XYBot:
                     message.get("MsgId", ""), message["FromWxid"],
                     message["SenderWxid"], message["Content"])
 
-        # 确保content是字符串
-        content = message["Content"]
-        if isinstance(content, dict) and "string" in content:
-            content = content["string"]
-        elif not isinstance(content, str):
-            content = str(content)
-
         await self.msg_db.save_message(
             msg_id=int(message.get("MsgId", 0)),
             sender_wxid=message["SenderWxid"],
             from_wxid=message["FromWxid"],
             msg_type=int(message.get("MsgType", 0)),
-            content=content,
+            content=message["Content"],
             is_group=message["IsGroup"]
         )
 
@@ -1339,19 +1183,12 @@ class XYBot:
                     message["SenderWxid"], message["Patter"],
                     message["Patted"], message["PatSuffix"])
 
-        # 创建拍一拍内容
-        pat_content = f"{message['Patter']} 拍了拍 {message['Patted']} {message['PatSuffix']}"
-
-        # 确保content是字符串
-        if not isinstance(pat_content, str):
-            pat_content = str(pat_content)
-
         await self.msg_db.save_message(
             msg_id=int(message.get("MsgId", 0)),
             sender_wxid=message["SenderWxid"],
             from_wxid=message["FromWxid"],
             msg_type=int(message.get("MsgType", 0)),
-            content=pat_content,
+            content=f"{message['Patter']} 拍了拍 {message['Patted']} {message['PatSuffix']}",
             is_group=message["IsGroup"]
         )
 
@@ -1752,102 +1589,20 @@ class XYBot:
                     message["Ats"] = message.get("Ats", []) + [self.wxid]
                     logger.debug(f"将机器人wxid {self.wxid} 添加到Ats列表中，模拟@机器人效果")
 
-                # 导入插件管理器和事件管理器
+                # 尝试找到并调用Dify插件处理该消息
                 from utils.plugin_manager import plugin_manager
-                from utils.event_manager import EventManager
+                from utils.event_manager import EventManager  # 导入事件管理器
 
                 # 创建一个临时消息对象，避免修改原消息
                 temp_message = message.copy()
 
-                # 检查是否有插件能处理该消息
-                plugin_handled = False
-                ai_plugins = []  # 用于存储AI对话插件
-
-                # 首先找出所有AI平台插件
-                for plugin_name, plugin in plugin_manager.plugins.items():
-                    if hasattr(plugin, 'is_ai_platform') and plugin.is_ai_platform:
-                        ai_plugins.append((plugin_name, plugin))
-                        logger.debug(f"找到AI平台插件: {plugin_name}")
-
-                # 创建一个标志，表示是否有插件处理了消息
-                plugin_handled = False
-
-                # 直接触发 text_message 事件，让插件系统自己去识别和处理
-                # 这样，每个插件都有机会检查消息是否包含它的唤醒词或触发词
+                # 直接触发事件系统的text_message事件，让所有插件处理该消息
+                # 这将确保消息只被处理一次
                 if self.ignore_protection or not protector.check(14400):
-                    # 创建一个标志，用于标记消息是否已被处理
-                    message_processed = False
-
-                    # 定义一个回调函数，用于接收事件处理结果
-                    def on_message_processed(result):
-                        nonlocal message_processed
-                        # 如果有插件返回 False，表示它处理了消息并阻止后续处理
-                        if result is False:
-                            message_processed = True
-                            logger.info(f"插件系统已处理消息")
-
-                    # 触发 text_message 事件
-                    await EventManager.emit("text_message", self.bot, temp_message, callback=on_message_processed)
-
-                    # 检查是否有插件处理了消息
-                    if message_processed:
-                        plugin_handled = True
-                    else:
-                        # 给插件一些时间来处理消息（异步处理）
-                        # 检查是否有视频、图片等消息正在发送
-                        await asyncio.sleep(0.5)
-
-                        # 检查是否有插件发送了响应消息
-                        from_wxid = temp_message.get("FromWxid", "")
-                        if from_wxid in self.recent_responses:
-                            recent_response = self.recent_responses[from_wxid]
-                            # 检查最近的响应是否包含"正在获取"等关键词
-                            if "正在获取" in recent_response or "请稍等" in recent_response:
-                                plugin_handled = True
-                                logger.info(f"检测到插件已发送响应消息: {recent_response[:30]}...")
-                                # 清除记录，避免影响后续消息
-                                self.recent_responses.pop(from_wxid, None)
-
-                        # 如果没有检测到响应消息，再检查消息对象中的LastResponse字段
-                        if not plugin_handled and "正在获取" in temp_message.get("LastResponse", ""):
-                            plugin_handled = True
-                            logger.info(f"检测到插件正在异步处理消息")
-
-                        # 如果仍未检测到插件处理，检查是否有其他插件正在处理消息
-                        # 例如，检查是否有视频、图片等消息正在发送
-                        if not plugin_handled:
-                            # 检查是否有其他插件正在处理消息的迹象
-                            # 例如，检查最近的日志中是否有插件处理消息的记录
-                            # 这里我们使用一个简单的方法：检查是否有插件发送了消息
-                            for chat_id, response in list(self.recent_responses.items()):
-                                if "正在获取" in response or "请稍等" in response:
-                                    plugin_handled = True
-                                    logger.info(f"检测到其他插件正在处理消息: {response[:30]}...")
-                                    # 清除记录，避免影响后续消息
-                                    self.recent_responses.pop(chat_id, None)
-                                    break
+                    # 异步触发事件，但不等待结果
+                    asyncio.create_task(EventManager.emit("text_message", self.bot, temp_message))
                 else:
                     logger.warning("风控保护: 新设备登录后4小时内请挂机")
-
-                # 如果没有插件处理该消息，且找到了AI平台插件，则交给AI平台插件处理
-                if not plugin_handled and ai_plugins:
-                    logger.info(f"没有插件处理消息，将消息交给AI平台插件处理")
-
-                    # 使用第一个AI平台插件处理消息
-                    ai_plugin_name, ai_plugin = ai_plugins[0]
-
-                    # 查找AI插件的text_message处理方法
-                    for method_name in dir(ai_plugin):
-                        method = getattr(ai_plugin, method_name)
-                        if hasattr(method, '_event_type') and method._event_type == 'text_message':
-                            # 调用AI插件的处理方法
-                            if self.ignore_protection or not protector.check(14400):
-                                asyncio.create_task(method(self.bot, temp_message))
-                                plugin_handled = True
-                                logger.info(f"已触发AI平台插件 {ai_plugin_name} 处理消息: {temp_message['Content']}")
-                                break
-                            else:
-                                logger.warning("风控保护: 新设备登录后4小时内请挂机")
 
                 # 返回False，表示消息已经被处理，不需要继续处理
                 return False

@@ -1,3 +1,5 @@
+import os
+import sys
 from abc import ABC
 
 from loguru import logger
@@ -14,9 +16,48 @@ class PluginBase(ABC):
     version: str = "1.0.0"
     is_ai_platform: bool = False  # 标记是否为AI平台插件
 
+    # 标记是否设置了全局优先级
+    has_global_priority: bool = False
+    # 默认全局优先级值
+    priority: int = 50
+
     def __init__(self):
         self.enabled = False
         self._scheduled_jobs = set()
+
+        # 尝试从配置文件中读取全局优先级
+        try:
+            import os
+            import tomllib
+
+            # 获取插件目录路径
+            plugin_dir = os.path.dirname(sys.modules[self.__class__.__module__].__file__)
+            config_path = os.path.join(plugin_dir, "config.toml")
+
+            if os.path.exists(config_path):
+                with open(config_path, "rb") as f:
+                    config = tomllib.load(f)
+
+                # 尝试从配置文件中读取优先级
+                # 首先尝试从basic部分读取
+                basic_config = config.get("basic", {})
+                if "priority" in basic_config:
+                    self.priority = min(max(int(basic_config["priority"]), 0), 99)
+                    self.has_global_priority = True
+                    logger.debug(f"从[basic]部分读取到插件 {self.__class__.__name__} 的全局优先级: {self.priority}")
+
+                # 如果basic部分没有，尝试从插件名称部分读取
+                elif self.__class__.__name__ in config and "priority" in config[self.__class__.__name__]:
+                    self.priority = min(max(int(config[self.__class__.__name__]["priority"]), 0), 99)
+                    self.has_global_priority = True
+                    logger.debug(f"从[{self.__class__.__name__}]部分读取到插件 {self.__class__.__name__} 的全局优先级: {self.priority}")
+
+                # 如果都没有，不设置全局优先级标志，使用装饰器中的优先级
+                else:
+                    logger.debug(f"未在配置文件中找到插件 {self.__class__.__name__} 的全局优先级，将使用装饰器中的优先级")
+        except Exception as e:
+            logger.warning(f"读取插件 {self.__class__.__name__} 的全局优先级时出错: {str(e)}")
+            # 出错时不设置全局优先级标志
 
     async def on_enable(self, bot=None):
         """插件启用时调用"""
