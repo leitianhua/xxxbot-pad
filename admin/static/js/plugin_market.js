@@ -5,10 +5,10 @@ let installedPlugins = []; // 存储已安装的插件信息
 
 // 插件市场API配置 - 与plugins.js保持一致
 const PLUGIN_MARKET_API = {
-    BASE_URL: '/api',  // 使用相对路径访问本地API
-    LIST: '/plugin_market/list',  // 本地API路径
-    SUBMIT: '/plugin_market/submit',
-    INSTALL: '/plugin_market/install',
+    BASE_URL: 'http://xianan.xin:1562/api',  // 使用与旧插件市场相同的远程API
+    LIST: '/plugins/?status=approved',  // 使用与旧插件市场相同的路径
+    SUBMIT: '/plugins/',
+    INSTALL: '/plugins/install/',
     CACHE_KEY: 'xybot_plugin_market_cache',
     CACHE_EXPIRY: 3600000 // 缓存有效期1小时（毫秒）
 };
@@ -237,29 +237,14 @@ function processPluginTags(plugin) {
             });
         }
 
-        // 添加分类标签（如果不在现有标签中）
-        const categoryName = getCategoryName(plugin.category || 'other');
-        const categoryClass = `tag-${(plugin.category || 'other').toLowerCase()}`;
-
-        // 检查是否已经有此分类标签
-        const hasCategoryTag = tagsArray.some(tag => {
-            const tagText = typeof tag === 'string' ? tag.trim().toLowerCase() :
-                           (typeof tag === 'object' && tag.name ? tag.name.toLowerCase() : '');
-            return tagText === categoryName.toLowerCase() || tagText === plugin.category?.toLowerCase();
-        });
-
-        // 如果没有此分类标签，添加一个
-        if (!hasCategoryTag) {
-            tagsHtml = `<span class="plugin-tag ${categoryClass}" data-tag="${plugin.category?.toLowerCase() || 'other'}">${categoryName}</span>` + tagsHtml;
+        // 只有当没有任何标签时，才添加分类标签
+        if (!tagsHtml) {
+            const categoryName = getCategoryName(plugin.category || 'other');
+            const categoryClass = `tag-${(plugin.category || 'other').toLowerCase()}`;
+            tagsHtml = `<span class="plugin-tag ${categoryClass}" data-tag="${plugin.category?.toLowerCase() || 'other'}">${categoryName}</span>`;
         }
     } catch (e) {
         console.warn('处理标签出错:', e, plugin);
-    }
-
-    // 如果没有有效标签，显示分类
-    if (!tagsHtml) {
-        const categoryClass = `tag-${(plugin.category || 'other').toLowerCase()}`;
-        tagsHtml = `<span class="plugin-tag ${categoryClass}" data-tag="${plugin.category?.toLowerCase() || 'other'}">${getCategoryName(plugin.category || 'other')}</span>`;
     }
 
     return tagsHtml;
@@ -322,10 +307,30 @@ async function loadPluginMarket(forceRefresh = false) {
         const data = await response.json();
 
         // 保存数据到全局变量
-        marketPlugins = data.plugins || [];
+        // 检查数据格式，适配远程API的响应格式
+        let plugins = [];
+        if (data.plugins) {
+            // 新格式，直接使用
+            plugins = data.plugins;
+        } else if (Array.isArray(data)) {
+            // 旧格式，直接是数组
+            plugins = data;
+        } else {
+            console.warn('未知的API响应格式:', data);
+            plugins = [];
+        }
+
+        marketPlugins = plugins;
 
         // 数据格式化与验证
         marketPlugins = marketPlugins.map(plugin => {
+            // 处理标签格式
+            let tags = plugin.tags || [];
+            // 如果标签是对象数组（远程API格式），提取name属性
+            if (Array.isArray(tags) && tags.length > 0 && typeof tags[0] === 'object' && tags[0].name) {
+                tags = tags.map(tag => tag.name);
+            }
+
             // 确保必要字段存在
             return {
                 id: plugin.id || generateTempId(plugin),
@@ -333,7 +338,7 @@ async function loadPluginMarket(forceRefresh = false) {
                 version: plugin.version || '1.0.0',
                 description: plugin.description || '',
                 author: plugin.author || '未知作者',
-                tags: plugin.tags || [],
+                tags: tags,
                 category: plugin.category || 'other',
                 github_url: plugin.github_url || '',
                 update_time: plugin.update_time || new Date().toISOString()
@@ -742,7 +747,7 @@ function updateRecommendedPlugins(plugins) {
             });
         }
 
-        // 如果没有标签，添加分类标签
+        // 只有当没有任何标签时，才添加分类标签
         if (!tagsHtml) {
             tagsHtml = `<span class="plugin-card-tag">${getCategoryName(plugin.category || 'other')}</span>`;
         }
@@ -1210,7 +1215,6 @@ async function installPlugin(plugin, status) {
             }
 
             const installBtn = document.querySelector(`button[data-plugin-id="${plugin.id}"]`);
-            let originalBtnText = installBtn ? installBtn.innerHTML : null;
 
             if (installBtn) {
                 // 禁用按钮并显示加载状态

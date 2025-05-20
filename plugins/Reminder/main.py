@@ -86,7 +86,7 @@ class Reminder(PluginBase):
     async def store_reminder(self, wxid: str, content: str, reminder_type: str, reminder_time: str, chat_id: str) -> Optional[int]:
         db_path = self.get_db_path(wxid)
         self.create_table(db_path)
-        
+
         # 如果是相对时间类型，计算绝对时间并转换为 one_time
         if reminder_type in ["minutes_later", "hours_later", "days_later"]:
             now = datetime.now()
@@ -202,7 +202,7 @@ class Reminder(PluginBase):
                 " - 删除 序号 (取消单个记录)\n"
                 " - 删除 全部 (取消所有记录)"
             )
-            
+
             try:
                 if is_group_chat:
                     await bot.send_at_message(chat_id, help_message, [wxid])
@@ -264,20 +264,57 @@ class Reminder(PluginBase):
                     next_time = await self.calculate_remind_time(reminder_type, reminder_time)
                 elif "每周" in time_period_str:
                     reminder_type = "weekly"
-                    day_mapping = {"一": "1", "二": "2", "三": "3", "四": "4", "五": "5", "六": "6", "日": "7"}
-                    match = re.match(r"每周([一二三四五六日])\s*(\d{1,2}:\d{2})", time_period_str)
-                    if match:
-                        weekday = day_mapping[match.group(1)]
-                        time_str = match.group(2)
-                        reminder_time = f"{weekday} {time_str}"
-                        next_time = await self.calculate_remind_time(reminder_type, reminder_time)
-                    else:
-                        error_msg = "\n格式错误，请使用：每周一 9:00"
-                        if is_group_chat:
-                            await bot.send_at_message(chat_id, error_msg, [wxid])
+                    day_mapping = {"一": "1", "二": "2", "三": "3", "四": "4", "五": "5", "六": "6", "日": "7", "天": "7"}
+
+                    # 处理多个星期几的情况，如"每周一二三四五 14:44"
+                    multi_day_match = re.match(r"每周([一二三四五六日天]+)\s*(\d{1,2}:\d{2})", time_period_str)
+                    if multi_day_match:
+                        # 获取所有星期几
+                        weekdays_str = multi_day_match.group(1)
+                        time_str = multi_day_match.group(2)
+
+                        # 将中文星期几转换为数字
+                        weekdays = []
+                        for day_char in weekdays_str:
+                            if day_char in day_mapping:
+                                weekdays.append(day_mapping[day_char])
+
+                        # 如果成功解析了星期几
+                        if weekdays:
+                            # 将多个星期几组合为逗号分隔的字符串
+                            weekday_str = ",".join(weekdays)
+                            reminder_time = f"{weekday_str} {time_str}"
+                            next_time = await self.calculate_remind_time(reminder_type, reminder_time)
                         else:
-                            await bot.send_text_message(chat_id, error_msg)
-                        return False
+                            error_msg = "\n格式错误，请使用：每周一 9:00 或 每周一二三四五 14:44"
+                            if is_group_chat:
+                                await bot.send_at_message(chat_id, error_msg, [wxid])
+                            else:
+                                await bot.send_text_message(chat_id, error_msg)
+                            return False
+                    else:
+                        # 尝试匹配单个星期几
+                        single_day_match = re.match(r"每周([一二三四五六日天])\s*(\d{1,2}:\d{2})", time_period_str)
+                        if single_day_match:
+                            weekday = day_mapping[single_day_match.group(1)]
+                            time_str = single_day_match.group(2)
+                            reminder_time = f"{weekday} {time_str}"
+                            next_time = await self.calculate_remind_time(reminder_type, reminder_time)
+                        else:
+                            # 尝试匹配数字格式的星期几，如"每周1,2,3,4,5 14:44"
+                            num_day_match = re.match(r"每周(\d+(?:,\d+)*)\s*(\d{1,2}:\d{2})", time_period_str)
+                            if num_day_match:
+                                weekday_str = num_day_match.group(1)
+                                time_str = num_day_match.group(2)
+                                reminder_time = f"{weekday_str} {time_str}"
+                                next_time = await self.calculate_remind_time(reminder_type, reminder_time)
+                            else:
+                                error_msg = "\n格式错误，请使用：每周一 9:00 或 每周一二三四五 14:44 或 每周1,2,3,4,5 14:44"
+                                if is_group_chat:
+                                    await bot.send_at_message(chat_id, error_msg, [wxid])
+                                else:
+                                    await bot.send_text_message(chat_id, error_msg)
+                                return False
                 elif time_period_str.startswith("每天"):
                     reminder_type = "every_day"
                     # 提取时间部分
@@ -387,7 +424,7 @@ class Reminder(PluginBase):
         elif content.startswith(self.delete_command):
             try:
                 delete_id = content[len(self.delete_command):].strip()
-                
+
                 if delete_id == "全部":
                     if await self.delete_all_reminders(wxid):
                         success_msg = "🗑️已清空所有记录"
@@ -402,7 +439,7 @@ class Reminder(PluginBase):
                         else:
                             await bot.send_text_message(chat_id, fail_msg)
                     return False
-                
+
                 # 原有的删除单个提醒的逻辑
                 reminder_id = int(delete_id)
                 if await self.delete_reminder(wxid, reminder_id):
@@ -418,7 +455,7 @@ class Reminder(PluginBase):
                     else:
                         await bot.send_text_message(chat_id, fail_msg)
                 return False
-                
+
             except ValueError:
                 error_msg = "\n参数错误！请使用：\n删除 <记录ID> 或\n删除 全部"
                 if is_group_chat:
@@ -439,9 +476,12 @@ class Reminder(PluginBase):
             help_message = "⏰设置提醒:\n 记录 [时间/周期] [内容]\n\n"
             help_message += "🕒支持的时间格式:\n - XX分钟后\n - XX小时后\n - XX天后\n - HH:MM (具体时间)\n\n"
             help_message += "📅支持的周期格式:\n - 每年 MM月DD日 (如: 每年 3月15日)\n - 每月 DD号 HH:MM (如: 每月 8号 8:00)\n"
-            help_message += " - 每周一/每周二/.../每周日\n - 每周1/每周2/.../每周7\n - 每周 (每7天)\n - 每天\n - 每小时\n\n"
+            help_message += " - 每周一/每周二/.../每周日\n - 每周1/每周2/.../每周7\n"
+            help_message += " - 每周一二三四五 HH:MM (工作日)\n - 每周1,2,3,4,5 HH:MM (工作日)\n"
+            help_message += " - 每周 (每7天)\n - 每天\n - 每小时\n\n"
             help_message += "📝提醒指令示例:\n - 记录 10分钟后 提醒我喝水\n - 记录 每天 8:00 提醒我吃早饭\n"
-            help_message += " - 记录 每周一 9:00 开周会\n - 记录 每月 8号 8:00 开会\n - 记录 每年 3月15日 生日快乐\n"
+            help_message += " - 记录 每周一 9:00 开周会\n - 记录 每周一二三四五 14:44 工作日提醒\n"
+            help_message += " - 记录 每月 8号 8:00 开会\n - 记录 每年 3月15日 生日快乐\n"
             help_message += " - 记录 17:30 下班提醒\n\n"
             help_message += "📋管理提醒:\n - 我的记录 (查看所有提醒)\n - 删除 序号 (取消单个提醒)\n"
             help_message += " - 删除 全部 (取消所有提醒)\n - 记录帮助 (查看帮助信息)"
@@ -459,7 +499,7 @@ class Reminder(PluginBase):
         buffer_time = timedelta(seconds=30)
         check_start = now - buffer_time
         check_end = now + buffer_time
-        
+
         wxids = set()
 
         for filename in os.listdir(self.data_dir):
@@ -477,20 +517,42 @@ class Reminder(PluginBase):
                                 next_time = await self.calculate_remind_time("every_day", reminder_time)
                             else:
                                 next_time = await self.calculate_remind_time(reminder_type, reminder_time)
-                            
+
                             if next_time and check_start <= next_time <= check_end:
                                 await self.send_reminder(bot, wxid, content, id, chat_id)
-                                
+
                                 if reminder_type in ["daily", "weekly", "monthly", "yearly", "every_hour", "every_day", "every_week"]:
                                     new_next_time = await self.calculate_remind_time(reminder_type, reminder_time)
                                     if new_next_time:
+                                        # 计算下一个周期的提醒时间字符串
+                                        if reminder_type == "weekly":
+                                            # 保持原有星期几部分，更新时间部分
+                                            weekday_part = reminder_time.split()[0]
+                                            time_part = new_next_time.strftime("%H:%M")
+                                            new_reminder_time = f"{weekday_part} {time_part}"
+                                        elif reminder_type == "monthly":
+                                            day_part = reminder_time.split()[0]
+                                            time_part = new_next_time.strftime("%H:%M")
+                                            new_reminder_time = f"{day_part} {time_part}"
+                                        elif reminder_type == "yearly":
+                                            month_part, day_part = reminder_time.split()[:2]
+                                            time_part = new_next_time.strftime("%H:%M")
+                                            new_reminder_time = f"{month_part} {day_part} {time_part}"
+                                        elif reminder_type in ["every_day", "daily"]:
+                                            new_reminder_time = new_next_time.strftime("%H:%M")
+                                        elif reminder_type == "every_hour":
+                                            new_reminder_time = ""
+                                        elif reminder_type == "every_week":
+                                            new_reminder_time = new_next_time.strftime("%H:%M")
+                                        else:
+                                            new_reminder_time = new_next_time.strftime("%Y-%m-%d %H:%M:%S")
                                         db_path = self.get_db_path(wxid)
                                         conn = sqlite3.connect(db_path)
                                         cursor = conn.cursor()
                                         try:
                                             cursor.execute(
                                                 "UPDATE reminders SET reminder_time = ? WHERE id = ?",
-                                                (reminder_time, id)
+                                                (new_reminder_time, id)
                                             )
                                             conn.commit()
                                             logger.info(f"已更新提醒 {id} 的下次提醒时间为 {new_next_time}")
@@ -500,10 +562,10 @@ class Reminder(PluginBase):
                                             conn.close()
                                 else:
                                     await self.delete_reminder(wxid, id)
-                                
+
                         except ValueError as e:
                             logger.warning(f"时间格式错误，无法执行提醒 {id}: {e}")
-                            
+
             except Exception as e:
                 logger.exception(f"处理用户 {wxid} 的提醒时出错: {e}")
 
@@ -511,7 +573,7 @@ class Reminder(PluginBase):
         try:
             # 获取消息的第一个词
             first_word = content.split()[0] if content else ""
-            
+
             # 检查是否是其他插件的命令
             if first_word in self.other_plugin_cmd:
                 logger.info(f"检测到插件联动命令: {first_word}")
@@ -535,7 +597,7 @@ class Reminder(PluginBase):
                         "SenderWxid": wxid,
                         "Ats": []
                     }
-                    
+
                     # 触发文本消息事件
                     await EventManager.emit("text_message", bot, simulated_message)
                     logger.info(f"成功触发插件命令: {content}")
@@ -544,7 +606,7 @@ class Reminder(PluginBase):
                     await self._send_normal_reminder(bot, wxid, content, reminder_id, chat_id)
             else:
                 await self._send_normal_reminder(bot, wxid, content, reminder_id, chat_id)
-                
+
         except Exception as e:
             logger.error(f"发送提醒消息失败: {e}")
 
@@ -560,7 +622,7 @@ class Reminder(PluginBase):
 
         # 只发送实际内容，不包含其他描述文字
         output = content
-        
+
         # 不再使用@消息，直接发送普通文本消息
         await bot.send_text_message(chat_id, output)
 
@@ -592,17 +654,34 @@ class Reminder(PluginBase):
             return True
 
     async def calculate_remind_time(self, reminder_type: str, reminder_time: str) -> Optional[datetime]:
+        from datetime import timedelta  # 确保timedelta在本地作用域可用
         now = datetime.now()
         try:
             if reminder_type == "one_time":
                 if isinstance(reminder_time, str):
                     try:
+                        # 尝试标准格式
                         return datetime.strptime(reminder_time, '%Y-%m-%d %H:%M:%S')
                     except ValueError:
-                        logger.warning(f"无法解析 one_time 时间格式: {reminder_time}")
-                        return None
+                        try:
+                            # 尝试 ISO 8601 格式 (带Z的UTC时间)
+                            if reminder_time.endswith('Z'):
+                                # 移除Z并解析
+                                dt = datetime.fromisoformat(reminder_time.replace('Z', '+00:00'))
+                                # 转换为本地时间 (UTC+8)
+                                from datetime import timezone, timedelta
+                                china_timezone = timezone(timedelta(hours=8))
+                                local_dt = dt.astimezone(china_timezone)
+                                logger.info(f"将UTC时间 {dt} 转换为中国时间 {local_dt}")
+                                return local_dt.replace(tzinfo=None)
+                            else:
+                                # 尝试其他ISO格式
+                                return datetime.fromisoformat(reminder_time)
+                        except ValueError:
+                            logger.warning(f"无法解析 one_time 时间格式: {reminder_time}")
+                            return None
                 return None
-                
+
             elif reminder_type == "every_day":
                 if not reminder_time:
                     return None
@@ -611,24 +690,51 @@ class Reminder(PluginBase):
                 if next_time <= now:
                     next_time += timedelta(days=1)
                 return next_time
-            
+
             elif reminder_type == "daily":
                 hour, minute = map(int, reminder_time.split(":"))
                 next_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
                 if next_time <= now:
                     next_time += timedelta(days=1)
                 return next_time
-            
+
             elif reminder_type == "weekly":
-                weekday, time_str = reminder_time.split()
-                weekday = int(weekday)
+                weekday_str, time_str = reminder_time.split()
                 hour, minute = map(int, time_str.split(":"))
-                days_ahead = weekday - now.weekday()
-                if days_ahead <= 0:
-                    days_ahead += 7
+
+                # 处理多个星期几的情况，如 "1,2,3,4,5"
+                if "," in weekday_str:
+                    weekdays = [int(day) for day in weekday_str.split(",")]
+                    # 让1=周一, ..., 6=周六, 0=周日
+                    current_weekday = (now.weekday() + 1) % 7  # 0=周日, 1=周一, ..., 6=周六
+
+                    # 计算每个星期几距离现在的天数
+                    days_ahead_list = []
+                    for day in weekdays:
+                        days = day - current_weekday
+                        if days < 0:
+                            days += 7
+                        days_ahead_list.append(days)
+
+                    # 选择最近的一天
+                    days_ahead = min(days_ahead_list)
+                else:
+                    # 单个星期几的情况
+                    weekday = int(weekday_str)
+                    current_weekday = (now.weekday() + 1) % 7  # 0=周日, 1=周一, ..., 6=周六
+                    days_ahead = weekday - current_weekday
+                    if days_ahead < 0:
+                        days_ahead += 7
+
                 next_time = now + timedelta(days=days_ahead)
-                return next_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            
+                next_time = next_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+                # 检查是否已经过了今天的提醒时间
+                if days_ahead == 0 and next_time <= now:
+                    next_time += timedelta(days=7)
+
+                return next_time
+
             elif reminder_type == "monthly":
                 day, time_str = reminder_time.split()
                 day = int(day)
@@ -642,7 +748,7 @@ class Reminder(PluginBase):
                         year += 1
                     next_time = next_time.replace(year=year, month=month)
                 return next_time
-            
+
             elif reminder_type == "yearly":
                 month, day, time_str = reminder_time.split()
                 month, day = int(month), int(day)
@@ -651,18 +757,18 @@ class Reminder(PluginBase):
                 if next_time <= now:
                     next_time = next_time.replace(year=now.year + 1)
                 return next_time
-            
+
             elif reminder_type == "every_hour":
                 next_time = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
                 return next_time
-            
+
             elif reminder_type == "every_week":
                 hour, minute = map(int, reminder_time.split(":"))
                 next_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
                 if next_time <= now:
                     next_time += timedelta(days=7)
                 return next_time
-            
+
             else:
                 logger.warning(f"未知的提醒类型: {reminder_type}")
                 return None
@@ -679,7 +785,8 @@ class Reminder(PluginBase):
 
         async def reminder_callback():
             try:
-                await self.send_reminder(bot, wxid, content, new_id, chat_id) # type: ignore
+                # 使用 message_id 作为 chat_id
+                await self.send_reminder(bot, wxid, content, new_id, message_id)
             except Exception as e:
                 logger.exception(f"执行定时任务失败: {e}")
 
