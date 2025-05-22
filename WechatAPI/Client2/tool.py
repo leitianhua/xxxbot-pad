@@ -15,7 +15,7 @@ from ..errors import *
 
 class ToolMixin(WechatAPIClientBase):
     async def download_image(self, aeskey: str, cdnmidimgurl: str) -> str:
-        """CDN下载高清图片。
+        """CDN下载高清图片（新版接口）。
 
         Args:
             aeskey (str): 图片的AES密钥
@@ -32,8 +32,8 @@ class ToolMixin(WechatAPIClientBase):
             raise UserLoggedOut("请先登录")
 
         async with aiohttp.ClientSession() as session:
-            json_param = {"Wxid": self.wxid, "AesKey": aeskey, "Cdnmidimgurl": cdnmidimgurl}
-            response = await session.post(f'http://{self.ip}:{self.port}/api/Tools/CdnDownloadImg', json=json_param)
+            json_param = {"Wxid": self.wxid, "FileAesKey": aeskey, "FileNo": cdnmidimgurl}
+            response = await session.post(f'http://{self.ip}:{self.port}/api/Tools/CdnDownloadImage', json=json_param)
             json_resp = await response.json()
 
             if json_resp.get("Success"):
