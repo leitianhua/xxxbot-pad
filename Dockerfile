@@ -8,13 +8,16 @@ ENV TZ=Asia/Shanghai
 ENV IMAGEIO_FFMPEG_EXE=/usr/bin/ffmpeg
 
 # 安装系统依赖（使用系统自带 python3.12）
-RUN apt-get update && \
-    apt-get install -y python3 python3-venv python3-dev python3-pip \
-    ffmpeg redis-server build-essential p7zip-full unrar-free curl netcat-openbsd \
-    nodejs npm procps && \
-    ln -sf /usr/bin/7za /usr/bin/7z || echo "无法创建7z链接，但继续执行" && \
-    npm install -g wetty@2.5.0 && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update
+RUN apt-get install -y python3 python3-venv python3-dev python3-pip
+RUN apt-get install -y ffmpeg redis-server build-essential p7zip-full curl netcat-openbsd procps
+# unrar-free 可能已被移除，若有需要可尝试 apt-get install -y unrar
+RUN apt-get install -y unrar || echo "unrar not found, skipping"
+RUN ln -sf /usr/bin/7za /usr/bin/7z || echo "无法创建7z链接，但继续执行"
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+RUN apt-get install -y nodejs
+RUN npm install -g wetty@2.5.0
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # 复制 Redis 配置
 COPY redis.conf /etc/redis/redis.conf
