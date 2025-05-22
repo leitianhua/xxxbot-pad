@@ -1,4 +1,4 @@
-FROM ubuntu:24.04
+FROM python:3.11-slim
 
 # 设置工作目录
 WORKDIR /app
@@ -7,16 +7,30 @@ WORKDIR /app
 ENV TZ=Asia/Shanghai
 ENV IMAGEIO_FFMPEG_EXE=/usr/bin/ffmpeg
 
-# 安装系统依赖（使用系统自带 python3.12）
+# 更新软件源
 RUN apt-get update
-RUN apt-get install -y python3 python3-venv python3-dev python3-pip
-RUN apt-get install -y ffmpeg redis-server build-essential p7zip-full curl netcat-openbsd procps
-# unrar-free 可能已被移除，若有需要可尝试 apt-get install -y unrar
-RUN apt-get install -y unrar || echo "unrar not found, skipping"
+
+# 分步安装系统依赖，以便于调试
+RUN apt-get install -y ffmpeg 
+RUN apt-get install -y redis-server
+RUN apt-get install -y build-essential python3-dev
+RUN apt-get install -y p7zip-full
+RUN apt-get install -y unrar-free || apt-get install -y unrar || echo "无法安装unrar-free，继续安装"
+RUN apt-get install -y curl netcat-openbsd || apt-get install -y curl netcat-traditional || apt-get install -y curl netcat
 RUN ln -sf /usr/bin/7za /usr/bin/7z || echo "无法创建7z链接，但继续执行"
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-RUN apt-get install -y nodejs
+
+# 安装 nodejs 和 npm
+RUN apt-get update && apt-get install -y \
+    nodejs \
+    npm
+
+# 安装 wetty 2.5.0版本
 RUN npm install -g wetty@2.5.0
+
+# 安装 procps 工具
+RUN apt-get update && apt-get install -y procps
+
+# 清理apt缓存减小镜像大小
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # 复制 Redis 配置
@@ -26,9 +40,9 @@ COPY redis.conf /etc/redis/redis.conf
 COPY requirements.txt .
 
 # 升级pip并安装Python依赖
-RUN pip install --upgrade pip --break-system-packages
-RUN pip install --no-cache-dir -r requirements.txt --break-system-packages
-RUN pip install --no-cache-dir websockets httpx --break-system-packages
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir websockets httpx
 
 # 复制应用代码
 COPY . .
