@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM ubuntu:24.04
 
 # 设置工作目录
 WORKDIR /app
@@ -8,30 +8,14 @@ ENV TZ=Asia/Shanghai
 ENV IMAGEIO_FFMPEG_EXE=/usr/bin/ffmpeg
 
 # 更新软件源
-RUN apt-get update
-
-# 分步安装系统依赖，以便于调试
-RUN apt-get install -y ffmpeg 
-RUN apt-get install -y redis-server
-RUN apt-get install -y build-essential python3-dev
-RUN apt-get install -y p7zip-full
-RUN apt-get install -y unrar-free || apt-get install -y unrar || echo "无法安装unrar-free，继续安装"
-RUN apt-get install -y curl netcat-openbsd || apt-get install -y curl netcat-traditional || apt-get install -y curl netcat
-RUN ln -sf /usr/bin/7za /usr/bin/7z || echo "无法创建7z链接，但继续执行"
-
-# 安装 nodejs 和 npm
-RUN apt-get update && apt-get install -y \
-    nodejs \
-    npm
-
-# 安装 wetty 2.5.0版本
-RUN npm install -g wetty@2.5.0
-
-# 安装 procps 工具
-RUN apt-get update && apt-get install -y procps
-
-# 清理apt缓存减小镜像大小
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y python3.11 python3.11-venv python3.11-dev python3-pip \
+    ffmpeg redis-server build-essential p7zip-full unrar-free curl netcat-openbsd \
+    nodejs npm procps && \
+    ln -sf /usr/bin/python3.11 /usr/bin/python3 && \
+    ln -sf /usr/bin/7za /usr/bin/7z || echo "无法创建7z链接，但继续执行" && \
+    npm install -g wetty@2.5.0 && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # 复制 Redis 配置
 COPY redis.conf /etc/redis/redis.conf
