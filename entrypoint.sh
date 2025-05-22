@@ -59,10 +59,9 @@ if [ -f "/app/main_config.toml" ]; then
     fi
     
     # 提取框架类型
-    EXTRACTED_FRAMEWORK=$(grep -A 5 '\[Framework\]' /app/main_config.toml | grep 'type' | awk -F '"' '{print $2}')
+    FRAMEWORK_TYPE=$(grep -A 5 '\[Framework\]' /app/main_config.toml | grep 'type' | awk -F '"' '{print $2}')
     
-    if [ ! -z "$EXTRACTED_FRAMEWORK" ]; then
-        FRAMEWORK_TYPE="$EXTRACTED_FRAMEWORK"
+    if [ ! -z "$FRAMEWORK_TYPE" ]; then
         echo "从配置文件中提取到框架类型: $FRAMEWORK_TYPE"
     else
         echo "未从配置文件中提取到框架类型，使用默认值: $FRAMEWORK_TYPE"
@@ -102,40 +101,50 @@ else
     echo "使用849协议服务路径: $PAD_SERVICE_PATH"
 fi
 
-# 启动pad服务（协议服务）
-echo "启动pad服务（协议服务）..."
-if [ -f "$PAD_SERVICE_PATH" ]; then
-    # 在Linux系统上确保文件有执行权限
-    chmod +x "$PAD_SERVICE_PATH"
+# 读取框架类型
+FRAMEWORK_TYPE="default"
+if [ -f "/app/main_config.toml" ]; then
+    FRAMEWORK_TYPE=$(grep -A 5 '\[Framework\]' /app/main_config.toml | grep 'type' | awk -F '"' '{print $2}')
+fi
 
-    # 使用nohup在后台启动linuxService
-    nohup "$PAD_SERVICE_PATH" > /app/logs/pad_service.log 2>&1 &
-
-    # 记录进程号
-    PAD_PID=$!
-    echo "pad服务已启动，进程ID: $PAD_PID"
-
-    # 等待pad服务启动
-    echo "等待pad服务启动..."
-    # 等待短暂停，给pad服务一些初始化时间
-    sleep 2
-
-    # 尝试最多5次，每次间隔短一些
-    for i in {1..5}; do
-        if curl -s http://127.0.0.1:9011 > /dev/null 2>&1 || curl -s http://127.0.0.1:9011/VXAPI/Login/GetQR > /dev/null 2>&1; then
-            echo "pad服务已启动并可用"
-            break
-        else
-            if [ $i -lt 5 ]; then
-                echo "等待pad服务启动，尝试 $i/5..."
-                sleep 1
-            else
-                echo "警告：pad服务可能未完全启动，继续启动主应用..."
-            fi
-        fi
-    done
+if [[ "$FRAMEWORK_TYPE" == "wechat" ]]; then
+    echo "仅作为API客户端（Client2），不启动849协议服务"
 else
-    echo "警告：pad服务文件不存在: $PAD_SERVICE_PATH"
+    # 启动pad服务（协议服务）
+    echo "启动pad服务（协议服务）..."
+    if [ -f "$PAD_SERVICE_PATH" ]; then
+        # 在Linux系统上确保文件有执行权限
+        chmod +x "$PAD_SERVICE_PATH"
+
+        # 使用nohup在后台启动linuxService
+        nohup "$PAD_SERVICE_PATH" > /app/logs/pad_service.log 2>&1 &
+
+        # 记录进程号
+        PAD_PID=$!
+        echo "pad服务已启动，进程ID: $PAD_PID"
+
+        # 等待pad服务启动
+        echo "等待pad服务启动..."
+        # 等待短暂停，给pad服务一些初始化时间
+        sleep 2
+
+        # 尝试最多5次，每次间隔短一些
+        for i in {1..5}; do
+            if curl -s http://127.0.0.1:9011 > /dev/null 2>&1 || curl -s http://127.0.0.1:9011/VXAPI/Login/GetQR > /dev/null 2>&1; then
+                echo "pad服务已启动并可用"
+                break
+            else
+                if [ $i -lt 5 ]; then
+                    echo "等待pad服务启动，尝试 $i/5..."
+                    sleep 1
+                else
+                    echo "警告：pad服务可能未完全启动，继续启动主应用..."
+                fi
+            fi
+        done
+    else
+        echo "警告：pad服务文件不存在: $PAD_SERVICE_PATH"
+    fi
 fi
 
 # 根据框架类型选择启动哪个框架
