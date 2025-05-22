@@ -26,9 +26,9 @@ COPY redis.conf /etc/redis/redis.conf
 COPY requirements.txt .
 
 # 升级pip并安装Python依赖
-RUN pip install --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir websockets httpx
+RUN pip install --upgrade pip --break-system-packages
+RUN pip install --no-cache-dir -r requirements.txt --break-system-packages
+RUN pip install --no-cache-dir websockets httpx --break-system-packages
 
 # 复制应用代码
 COPY . .
