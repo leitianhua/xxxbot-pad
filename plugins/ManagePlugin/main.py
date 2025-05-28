@@ -28,34 +28,60 @@ class ManagePlugin(PluginBase):
         plugin_config = plugin_config["ManagePlugin"]
         main_config = main_config["XYBot"]
 
-        self.command = plugin_config["command"]
+        self.commands = plugin_config["commands"]
+        # 创建反向映射，用于命令匹配
+        self.command_map = {}
+        for cmd_type, cmd_names in self.commands.items():
+            for cmd_name in cmd_names:
+                self.command_map[cmd_name] = cmd_type
+        
+        # 添加日志输出，帮助调试命令映射
+        from loguru import logger
+        logger.debug(f"命令映射表: {self.command_map}")
+        
         self.admins = main_config["admins"]
 
     @on_text_message
     async def handle_text(self, bot: WechatAPIClient, message: dict):
         content = str(message["Content"]).strip()
-        command = content.split(" ")
+        cmd_parts = content.split(" ")
+        if not len(cmd_parts):
+            return True  # 空命令，继续执行后续处理
 
-        if not len(command) or command[0] not in self.command:
+        cmd_name = cmd_parts[0]
+        if cmd_name not in self.command_map:
             return True  # 不是管理命令，继续执行后续处理
 
         if message["SenderWxid"] not in self.admins:
             await bot.send_text_message(message["FromWxid"], "你没有权限使用此命令")
             return False  # 阻止后续处理
 
-        plugin_name = command[1] if len(command) > 1 else None
-        if command[0] == "加载插件":
+        # 获取命令类型
+        cmd_type = self.command_map[cmd_name]
+        # 获取插件名称参数
+        plugin_name = cmd_parts[1] if len(cmd_parts) > 1 else None
+        
+        if cmd_type == "load_plugin":
             if plugin_name in plugin_manager.plugins.keys():
-                await bot.send_text_message(message["FromWxid"], "⚠️插件已经加载")
-                return False  # 阻止后续处理
-
-            attempt = await plugin_manager.load_plugin_from_directory(bot, plugin_name)
-            if attempt:
-                await bot.send_text_message(message["FromWxid"], f"✅插件 {plugin_name} 加载成功")
+                # 如果插件已加载，则自动重载插件
+                if plugin_name == "ManagePlugin":
+                    await bot.send_text_message(message["FromWxid"], "⚠️你不能重载 ManagePlugin 插件！")
+                    return False  # 阻止后续处理
+                
+                attempt = await plugin_manager.reload_plugin(bot, plugin_name)
+                if attempt:
+                    await bot.send_text_message(message["FromWxid"], f"✅插件 {plugin_name} 重载成功")
+                else:
+                    await bot.send_text_message(message["FromWxid"], f"❌插件 {plugin_name} 重载失败，请查看日志错误信息")
             else:
-                await bot.send_text_message(message["FromWxid"], f"❌插件 {plugin_name} 加载失败，请查看日志错误信息")
+                # 插件未加载，正常加载
+                attempt = await plugin_manager.load_plugin_from_directory(bot, plugin_name)
+                if attempt:
+                    await bot.send_text_message(message["FromWxid"], f"✅插件 {plugin_name} 加载成功")
+                else:
+                    await bot.send_text_message(message["FromWxid"], f"❌插件 {plugin_name} 加载失败，请查看日志错误信息")
 
-        elif command[0] == "加载所有插件":
+        elif cmd_type == "load_all_plugins":
             attempt = await plugin_manager.load_plugins_from_directory(bot)
             if attempt:
                 attempt_str = '\n'.join(attempt)
@@ -63,7 +89,7 @@ class ManagePlugin(PluginBase):
             else:
                 await bot.send_text_message(message["FromWxid"], "❌没有成功加载任何插件，请查看日志了解更多信息")
 
-        elif command[0] == "卸载插件":
+        elif cmd_type == "unload_plugin":
             if plugin_name == "ManagePlugin":
                 await bot.send_text_message(message["FromWxid"], "⚠️你不能卸载 ManagePlugin 插件！")
                 return False  # 阻止后续处理
@@ -79,14 +105,14 @@ class ManagePlugin(PluginBase):
             else:
                 await bot.send_text_message(message["FromWxid"], f"❌插件 {plugin_name} 卸载失败，请查看日志错误信息")
 
-        elif command[0] == "卸载所有插件":
+        elif cmd_type == "unload_all_plugins":
             unloaded_plugins, failed_unloads = await plugin_manager.unload_all_plugins()
             unloaded_plugins = '\n'.join(unloaded_plugins)
             failed_unloads = '\n'.join(failed_unloads)
             await bot.send_text_message(message["FromWxid"],
                                         f"✅插件卸载成功：\n{unloaded_plugins}\n❌插件卸载失败：\n{failed_unloads}")
 
-        elif command[0] == "重载插件":
+        elif cmd_type == "reload_plugin":
             if plugin_name == "ManagePlugin":
                 await bot.send_text_message(message["FromWxid"], "⚠️你不能重载 ManagePlugin 插件！")
                 return False  # 阻止后续处理
@@ -100,7 +126,7 @@ class ManagePlugin(PluginBase):
             else:
                 await bot.send_text_message(message["FromWxid"], f"❌插件 {plugin_name} 重载失败，请查看日志错误信息")
 
-        elif command[0] == "重载所有插件":
+        elif cmd_type == "reload_all_plugins":
             loaded_plugins, failed_plugins = await plugin_manager.reload_all_plugins(bot)
 
             message_parts = []
@@ -117,7 +143,7 @@ class ManagePlugin(PluginBase):
 
             await bot.send_text_message(message["FromWxid"], "\n\n".join(message_parts))
 
-        elif command[0] == "插件列表":
+        elif cmd_type == "list_plugins":
             plugin_list = plugin_manager.get_plugin_info()
 
             plugin_stat = [["插件名称", "是否启用", "优先级", "优先级来源"]]
@@ -158,7 +184,7 @@ class ManagePlugin(PluginBase):
 
             await bot.send_text_message(message["FromWxid"], table)
 
-        elif command[0] == "插件信息":
+        elif cmd_type == "plugin_info":
             attemt = plugin_manager.get_plugin_info(plugin_name)
             if isinstance(attemt, dict):
                 # 确定优先级来源

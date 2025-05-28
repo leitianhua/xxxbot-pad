@@ -1,4 +1,13 @@
 [ManagePlugin]
 # 全局优先级设置 (0-99)，值越高优先级越高
 priority = 99
-command = ["加载插件", "加载所有插件", "卸载插件", "卸载所有插件", "重载插件", "重载所有插件", "插件列表", "插件信息"]
+
+[ManagePlugin.commands]
+load_plugin = ["加载插件", "插件加载"]
+load_all_plugins = ["加载所有插件", "所有插件加载"]
+unload_plugin = ["卸载插件", "插件卸载"]
+unload_all_plugins = ["卸载所有插件", "所有插件卸载"]
+reload_plugin = ["重载插件", "插件重载"]
+reload_all_plugins = ["重载所有插件", "所有插件重载"]
+list_plugins = ["插件列表", "列出插件"]
+plugin_info = ["插件信息", "插件详情"]

@@ -29,7 +29,7 @@ class Menu(PluginBase):
 
         self.version = main_config["version"]
 
-    @on_text_message
+    @on_text_message(priority=100)
     async def handle_text(self, bot: WechatAPIClient, message: dict):
         if not self.enable:
             return
@@ -40,9 +40,9 @@ class Menu(PluginBase):
         if command[0] in self.command:
             menu = (f"\n"
                     f"{self.menu}\n"
-                    f"\n"
-                    f"来自XXXBot {self.version}\n"
-                    f"https://github.com/NanSsye")
+                    )
             await bot.send_at_message(message["FromWxid"], menu, [message["SenderWxid"]])
+            return False  # 阻止其他插件处理此消息
         elif command[0] == "管理员菜单":
             await bot.send_at_message(message["FromWxid"], self.admin_menu, [message["SenderWxid"]])
+            return False  # 阻止其他插件处理此消息

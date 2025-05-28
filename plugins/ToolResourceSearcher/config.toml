@@ -1,0 +1,33 @@
+[general]
+expired_time = 30
+
+[advertisement]
+enable_filter = true
+ad_file_ids = true
+filter_keywords = [
+  "广告", "ad", "推广", "关注", "公众号", 
+  "小程序", "点击链接", "加群", "QQ群", "微信群", 
+  "电报群", "免费资源", "获取更多", "更多资源", 
+  "readme", "README", "说明", "必读", "打赏", 
+  "赞赏", "支付宝", "微信支付", "关注即可", "关注后", 
+  "关注公众号", "加入群", "入群",
+  "资源来源网络，30分钟后删除，请及时保存"
+]
+
+[[accounts]]
+id = "quark_main"
+type = "quark"
+enable = true
+cookie = "b-user-id=dda29c56-a4bd-0b8f-221e-fbe7d7dc6231; __sdid=AASuExq+nmu39ASa49WID1IakriPxXXa+7OnkuXHPl+Mfn4OoR+i/FO0sMCavEN8bvQ=; _UP_A4A_11_=wb9c81ae9af24dbca1190950b697e1fe; __pus=b5338ab64691d840c8a761761fd95350AASbKiRp+HKy8wqDLZ9SpczD0ldDFxfsqo50ffCzaRZ6VvbVC1PxWzt8nqbeJUxWOclgQ7qSctQbi5nTr3fPbLKs; __kp=250e11d0-1b2e-11f0-9dfd-d7545630921b; __kps=AATYIjLlcIEeoRU+aMylrVCd; __ktd=R9BUN0vqQ38VUloW/uHx9g==; __uid=AATYIjLlcIEeoRU+aMylrVCd; isg=BAwMzZZxiFck8pwjS0GkQ8c43Wo-RbDvPLAm6WbN07da8a77jFbZfQ0ClflJuehH; tfstk=goNtfWwzkMjiqkhls16HnrFBk_QnkSUavlzWimmMhkELuoHmhA0iMxZsx5Dm1cqdO43usdO6CKhx7qV01fZcMmarYCqcQxAv7WEJiCjNQrOxijslq_fu7NlqGgbRAS_ybVuJfs0shHGZokapLdCu7P8BWn_ud_Yv77nacmZjCvGIlDT61ogXRw3joh9X1oaCJDux5KgslDaIrq9sGjZbRw3qAmGuPinB5mAYUDUkfN9eJCO_9VHtDImeMfVBZAo7DDdfVW39c0asvIOj2VFWLyUGXQzn_7E-rlfB6uUbz-MLMHs-0WUQ1-aeXwG8JJ2oBJI6MDVixYPswE1_JfntFWMwWCr7JrwopWb5afhsf-caoUIgJ5Eg7WUDlpGtsJH86b1yfm23yS3Ygi5L2razhvFvXgugZ7FtL3A5md_dJKJqC2748JlR6qdmx2nlWsp23v7EJ0bdJKJqC2uKqNI93KkF8; __puus=3c9280d52fbe7963c9672203215c77ddAATZByE6Qo9Tzb02mHpZVvp5ftKxNF22zybMY/f++k2XC8UYdgv4JlhRPl+x3s/7Yihuh2aubNME6WyEEjx7PpwprK+I59827Nl+F0wVTSzt5FF/WWFpCh9iYHYfepCe1tlet3ANJrhW1N3CXrW5bDdQkYAxfeAYpUsJwVtx+6c+j+inK08U7CBiuF8SZHEpbFnYYMDg17+51+e4+jd749aE"
+save_dir = "5aa6572a3ba549a68dac3fd5fe06a120"
+insert_ad = true
+ad_file_ids = ["0ddd743aadf54b10a7a228873ae3a378"]
+
+[[accounts]]
+id = "baidu_main"
+type = "baidu"
+enable = false
+cookie = ""
+save_dir = ""
+insert_ad = false
+ad_file_ids = [] 

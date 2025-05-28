@@ -1,0 +1,31 @@
+[ToolPoint]
+enable = true
+
+# 消息格式配置
+message-prefix = "-----可爱尼-----"
+message-suffix = ""
+
+# 管理员功能
+admin-point-enable = true
+admin-point-command-format = "加积分/减积分/设置积分 数量 @用户/wxid"
+
+# 重置签到功能
+reset-signin-enable = true
+reset-signin-command = ["重置签到"]
+
+# 查询积分功能
+query-point-enable = true
+query-point-command = ["查询积分", "积分"]
+
+# 积分交易功能
+point-trade-enable = true
+point-trade-command = ["转账"]
+point-trade-command-format = "转账 数量 @用户"
+
+# 签到功能
+signin-enable = true
+signin-command = ["签到", "每日签到", "qd", "Qd", "QD"]
+signin-min-point = 3
+signin-max-point = 20
+signin-streak-cycle = 5  # 每签到?天后，额外积分奖励加1点？
+signin-max-streak-point = 10  # 额外积分奖励上限 

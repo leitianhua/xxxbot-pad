@@ -1,0 +1,12 @@
+[ToolGroupWelcome]
+# 全局配置
+enable = true
+
+# 群聊配置
+[ToolGroupWelcome.groups]
+# 群ID = {welcome-message = "欢迎语", url = "链接", message-type = "消息类型"}
+# 消息类型可选：card(卡片) 或 text(文字)
+# 如果不设置message-type，将使用默认值text
+
+# 只有配置了群ID的群才会发送欢迎语
+"123456789@chatroom" = {welcome-message = "👏欢迎 {nickname} 加入群聊！🎉", url = "https://example.com", message-type = "text" }

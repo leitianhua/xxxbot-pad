@@ -75,7 +75,7 @@ class SignIn(PluginBase):
         if last_sign and (now - last_sign).days < 1:
             output = "\n-----XXXBot-----\n你今天已经签到过了！😠"
             await bot.send_at_message(message["FromWxid"], output, [sign_wxid])
-            return
+            return False
 
         # 检查是否断开连续签到（超过1天没签到）
         if last_sign and (now - last_sign).days > 1:
@@ -115,3 +115,4 @@ class SignIn(PluginBase):
             output += "[爱心]"
 
         await bot.send_at_message(message["FromWxid"], output, [sign_wxid])
+        return False

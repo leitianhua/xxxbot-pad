@@ -1,0 +1,57 @@
+[SecondProcessor]
+# SecondProcessor 插件配置文件
+# 用于控制消息转发的二次处理功能
+
+# 全局开关，设为false将禁用所有处理功能
+enable = true
+
+# 是否进行敏感词过滤（在规则匹配前处理）
+filter_sensitive_words = true
+
+# 敏感词列表，将被替换为等长的星号
+sensitive_words = [
+    "敏感词1",
+    "敏感词2",
+    "不当言论",
+    "违规内容"
+]
+
+# 是否加密消息内容（在规则匹配后处理）
+# 注意：启用此功能将对消息进行加密传输，并在发送前解密
+# 此功能主要用于保护隐私，确保中间环节无法查看消息内容
+encrypt_messages = false
+
+# 是否为转发的文本消息添加时间戳
+# 会在消息最后添加 [转发时间: 2023-06-15 12:34:56] 格式的信息
+add_timestamp = true
+
+# 是否记录转发日志到文件
+# 日志将保存在 logs/message_forward.log
+log_to_file = false
+
+# 其他自定义处理选项
+# 以下是一些可选的消息处理选项，可根据需要启用
+
+# 是否自动回复已转发消息
+[SecondProcessor.auto_reply]
+enable = false
+# 回复给消息发送者的内容
+text = "您的消息已转发给相关人员处理"
+# 回复条件：只有当消息来自以下wxid列表时才回复
+only_reply_to = []
+
+# 消息重定向：可将特定内容重定向到其他目标
+[SecondProcessor.redirect]
+enable = false
+# 当消息包含以下关键词时，重定向到指定目标
+keywords = ["紧急", "加急", "重要"]
+# 重定向目标wxid
+redirect_to = "wxid_manager123456"
+
+# 统计功能：记录消息转发数量
+[SecondProcessor.statistics]
+enable = false
+# 统计周期（天）
+period = 7
+# 统计数据保存路径
+save_path = "data/forward_stats.json" 

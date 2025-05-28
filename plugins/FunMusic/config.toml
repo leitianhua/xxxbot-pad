@@ -1,0 +1,24 @@
+# FunMusic 插件配置文件
+
+# 基本设置
+[basic]
+# 是否启用插件
+enabled = true
+
+# API设置
+[api]
+# 请求超时时间（秒）
+timeout = 10
+# 是否禁用SSL验证
+disable_ssl_verify = true
+
+# 音乐平台设置
+[platforms]
+# 酷狗音乐
+kugou_enabled = true
+# 网易云音乐
+netease_enabled = true
+# 汽水音乐
+qishui_enabled = true
+# 随机音乐
+random_enabled = true 

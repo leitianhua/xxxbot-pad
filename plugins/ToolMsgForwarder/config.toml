@@ -1,0 +1,76 @@
+[ToolMsgForwarder]
+# 全局设置
+enable = true     # 总开关，设为false将完全禁用插件所有转发功能
+priority = 99     # 插件优先级，值越小优先级越高
+
+# ==================== 文本消息规则 ====================
+# 规则1: 指定群聊中的特定成员消息转发
+[[ToolMsgForwarder.text_rules]]
+enabled = true                              # 此规则的开关
+from_wxid = "50144964587@chatroom"          # 来源群聊ID
+listen_specific_senders_in_group = ["wxid_l4u1u9bgq5u022", "wxid_bbbbbbb22222"]  # 监听的群成员
+to_wxids = ["wxid_l4u1u9bgq5u022"]          # 转发目标wxid
+prepend_info = true                         # 是否在转发内容前添加来源信息
+
+# 规则2: 私聊消息转发 (示例)
+[[ToolMsgForwarder.text_rules]]
+enabled = false                             # 暂时禁用
+from_wxid = "wxid_user33333"                # 来源用户wxid
+to_wxids = ["wxid_admin123456"]             # 转发给管理员
+prepend_info = true                         # 添加来源信息
+
+# 规则3: 监听整个群的所有消息 (示例)
+[[ToolMsgForwarder.text_rules]]
+enabled = false                             # 暂时禁用
+from_wxid = "87654321@chatroom"             # 来源群聊ID
+# 不设置listen_specific_senders_in_group则监听群内所有人
+to_wxids = ["wxid_admin123456"]             # 转发给管理员
+prepend_info = true                         # 添加来源信息
+
+# ==================== 图片消息规则 ====================
+# 规则1: 转发某用户的所有图片
+[[ToolMsgForwarder.image_rules]]
+enabled = false                             # 暂时禁用
+from_wxid = "wxid_user44444"                # 来源用户wxid
+to_wxids = ["wxid_admin123456"]             # 转发给管理员
+prepend_info = true                         # 添加来源信息
+
+# 规则2: 转发群内某成员的图片
+[[ToolMsgForwarder.image_rules]]
+enabled = false                             # 暂时禁用
+from_wxid = "11223344@chatroom"             # 来源群聊ID
+listen_specific_senders_in_group = ["wxid_photo666666"]  # 只监听这个人的图片
+to_wxids = ["wxid_admin123456", "55667788@chatroom"]     # 转发给个人和群
+prepend_info = false                        # 不添加来源信息，直接转发图片
+
+# ==================== 文件消息规则 ====================
+# 规则1: 转发重要文件
+[[ToolMsgForwarder.file_rules]]
+enabled = false                             # 暂时禁用
+from_wxid = "wxid_manager55555"             # 经理的wxid
+to_wxids = ["wxid_admin123456", "wxid_assistant77777"]   # 转发给管理员和助理
+prepend_info = true                         # 添加来源信息
+
+# 规则2: 转发群内成员的文件
+[[ToolMsgForwarder.file_rules]]
+enabled = false                             # 暂时禁用
+from_wxid = "33445566@chatroom"             # 来源群聊ID
+listen_specific_senders_in_group = ["wxid_file888888"]    # 只监听这个人的文件
+to_wxids = ["wxid_admin123456"]             # 转发给管理员
+prepend_info = true                         # 添加来源信息
+
+# ==================== 视频消息规则 ====================
+# 规则1: 转发视频
+[[ToolMsgForwarder.video_rules]]
+enabled = false                             # 暂时禁用
+from_wxid = "99887766@chatroom"             # 来源群聊ID
+listen_specific_senders_in_group = ["wxid_video888888"]  # 只监听这个人的视频
+to_wxids = ["wxid_admin123456"]             # 转发给管理员
+prepend_info = true                         # 添加来源信息
+
+# 规则2: 私聊视频转发
+[[ToolMsgForwarder.video_rules]]
+enabled = false                             # 暂时禁用
+from_wxid = "wxid_video999999"              # 来源用户wxid
+to_wxids = ["wxid_admin123456", "12345678@chatroom"]    # 转发给个人和群
+prepend_info = false                        # 不添加来源信息
