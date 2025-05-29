@@ -277,51 +277,51 @@ class JDRebate(PluginBase):
 
     async def _parse_api_response(self, api_json_result: dict) -> Optional[Dict[str, Any]]:
         """
-        Parses the API JSON response, attempting to handle two known structures.
-        Returns a dictionary with extracted data or None if parsing fails or data is invalid.
+        解析API的JSON响应，尝试处理两种已知的结构。
+        返回包含提取数据的字典，或者在解析失败或数据无效时返回None。
         """
         try:
-            # Attempt to parse Structure 1 (nested, e.g., jd_union_open_promotion_byunionid_get_response)
+            # 尝试解析结构1（嵌套，例如 jd_union_open_promotion_byunionid_get_response）
             if "jd_union_open_promotion_byunionid_get_response" in api_json_result:
                 response_data = api_json_result.get("jd_union_open_promotion_byunionid_get_response", {})
                 outer_code = response_data.get("code")
-                if outer_code == "0": #京东联盟外层code，0表示成功
+                if outer_code == "0": # 京东联盟外层code，0表示成功
                     result_str = response_data.get("result")
                     if result_str and isinstance(result_str, str):
                         try:
-                            inner_result = json.loads(result_str) # 'result' is a JSON string
+                            inner_result = json.loads(result_str) # 'result'是一个JSON字符串
                             inner_code = inner_result.get("code") # 折京客内层code
                             if inner_code == 200: # 200表示成功
                                 data_payload = inner_result.get("data", {})
                                 if data_payload and isinstance(data_payload, dict) :
                                     short_url = data_payload.get("shortURL")
-                                    click_url = data_payload.get("clickURL") # clickURL is also in this structure
+                                    click_url = data_payload.get("clickURL") # clickURL也在这个结构中
                                     if short_url:
                                         return {
                                             "shorturl": short_url,
-                                            "clickURL": click_url, # Capture clickURL if present
-                                            "_is_minimal": True # Indicates less detailed data
+                                            "clickURL": click_url, # 捕获clickURL（如果存在）
+                                            "_is_minimal": True # 表示数据较少
                                         }
                                     else:
-                                        logger.warning("API (Structure 1) did not return shortURL in data payload.")
+                                        logger.warning("API（结构1）在数据载荷中没有返回shortURL。")
                                 else:
-                                    logger.warning(f"API (Structure 1) 'data' payload is missing or not a dict. Inner result: {inner_result}")
+                                    logger.warning(f"API（结构1）'data'载荷缺失或不是字典。内部结果: {inner_result}")
                             else:
-                                logger.warning(f"API (Structure 1) inner code: {inner_code}, message: {inner_result.get('message')}. RequestId: {inner_result.get('requestId')}")
+                                logger.warning(f"API（结构1）内部代码: {inner_code}, 消息: {inner_result.get('message')}. 请求ID: {inner_result.get('requestId')}")
                         except json.JSONDecodeError as e:
-                            logger.error(f"API (Structure 1) failed to parse inner JSON 'result': {e}. Result string: '{result_str[:200]}...'")
+                            logger.error(f"API（结构1）解析内部JSON 'result'失败: {e}. 结果字符串: '{result_str[:200]}...'")
                     else:
-                        logger.warning(f"API (Structure 1) 'result' string not found or not a string. Response data: {str(response_data)[:200]}")
+                        logger.warning(f"API（结构1）'result'字符串未找到或不是字符串。响应数据: {str(response_data)[:200]}")
                 else:
-                    logger.warning(f"API (Structure 1) outer_code: {outer_code}. Full response: {str(response_data)[:500]}")
-                return None # Failed to process structure 1 correctly or outer_code indicated error
+                    logger.warning(f"API（结构1）外部代码: {outer_code}. 完整响应: {str(response_data)[:500]}")
+                return None # 无法正确处理结构1或外部代码表示错误
 
-            # Attempt to parse Structure 2 (flat, with "status" and "content")
+            # 尝试解析结构2（扁平，带有"status"和"content"）
             elif "status" in api_json_result and api_json_result.get("status") == 200:
                 content_items = api_json_result.get("content")
                 if content_items and isinstance(content_items, list) and len(content_items) > 0:
                     item = content_items[0]
-                    # This structure typically contains full details
+                    # 这个结构通常包含完整的详细信息
                     return {
                         "title": item.get("title", ""),
                         "original_price": item.get("size", ""),
@@ -335,18 +335,18 @@ class JDRebate(PluginBase):
                         "_is_minimal": False
                     }
                 else:
-                    # Handle cases like {"status":200,"message":"succ","data":null,"cid":"xxxxx"}
+                    # 处理像 {"status":200,"message":"succ","data":null,"cid":"xxxxx"} 这样的情况
                     if api_json_result.get("data") is None and api_json_result.get("message"):
-                        logger.warning(f"API (Structure 2 like) 'content' was empty or invalid, message: {api_json_result.get('message')}")
+                        logger.warning(f"API（类似结构2）'content'为空或无效，消息: {api_json_result.get('message')}")
                     else:
-                        logger.warning("API (Structure 2) 'content' is empty or not a list.")
+                        logger.warning("API（结构2）'content'为空或不是列表。")
 
-            # If neither structure matched or a non-200 status for structure 2
+            # 如果两种结构都不匹配或结构2的状态非200
             else:
-                logger.warning(f"API response did not match known structures or indicated an error. Status: {api_json_result.get('status')}. Raw: {str(api_json_result)[:500]}")
+                logger.warning(f"API响应不匹配已知结构或表示错误。状态: {api_json_result.get('status')}. 原始数据: {str(api_json_result)[:500]}")
 
         except Exception as e:
-            logger.error(f"Unexpected error during API response parsing: {e}. Raw response: {str(api_json_result)[:500]}")
+            logger.error(f"API响应解析过程中发生意外错误: {e}. 原始响应: {str(api_json_result)[:500]}")
 
         return None
 
@@ -366,7 +366,7 @@ class JDRebate(PluginBase):
                 }
                 headers = {
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "Content-Type": "application/x-www-form-urlencoded", # Keep as is, GET uses params in URL
+                    "Content-Type": "application/x-www-form-urlencoded", # 保持原样，GET在URL中使用参数
                     "Accept": "application/json"
                 }
                 logger.debug(f"请求参数 (convert_link): {params}")
@@ -376,8 +376,8 @@ class JDRebate(PluginBase):
                         return None
                     try:
                         text = await response.text()
-                        api_json_result = json.loads(text) # Parse the JSON text
-                        logger.debug(f"API返回原始结果 (convert_link): {str(api_json_result)[:1000]}") # Log raw for debug
+                        api_json_result = json.loads(text) # 解析JSON文本
+                        logger.debug(f"API返回原始结果 (convert_link): {str(api_json_result)[:1000]}") # 记录原始数据用于调试
                     except json.JSONDecodeError as e:
                         logger.error(f"解析API响应JSON失败 (convert_link): {e}. Response text: {text[:500]}")
                         return None
@@ -385,34 +385,34 @@ class JDRebate(PluginBase):
             parsed_data = await self._parse_api_response(api_json_result)
 
             if not parsed_data:
-                logger.warning("convert_link: _parse_api_response returned None.")
+                logger.warning("convert_link: _parse_api_response返回None。")
                 return None
 
             shorturl = parsed_data.get("shorturl")
             if not shorturl:
-                logger.warning("convert_link: Parsed API data does not contain a short URL.")
+                logger.warning("convert_link: 解析的API数据不包含短URL。")
                 return None
 
             if parsed_data.get("_is_minimal"):
-                logger.info(f"API for '{link}' returned minimal data. Sending simplified message with URL: {shorturl}")
+                logger.info(f"'{link}'的API返回了最小数据。发送带有URL的简化消息: {shorturl}")
                 return f"📌 京东推广链接\n👉 {shorturl}"
 
-            # Build the rich message using data from parsed_data
-            title = parsed_data.get("title", "京东商品") # Default title if empty
+            # 使用parsed_data中的数据构建丰富消息
+            title = parsed_data.get("title", "京东商品") # 如果为空则默认标题
             original_price = parsed_data.get("original_price", "")
             quanhou_jiage = parsed_data.get("quanhou_jiage", "")
             coupon_info = parsed_data.get("coupon_info", "")
             coupon_amount = parsed_data.get("coupon_amount", "")
             commission = parsed_data.get("commission", "")
 
-            formatted_content = f"📌 {title or '京东商品'}\n" # Ensure title is not empty
+            formatted_content = f"📌 {title or '京东商品'}\n" # 确保标题不为空
 
-            if quanhou_jiage: # Primary price to show
+            if quanhou_jiage: # 要显示的主要价格
                 price_info = f"💰 价格: ¥{quanhou_jiage}"
                 if original_price and original_price != quanhou_jiage:
                     price_info = f"💰 原价: ¥{original_price} 券后: ¥{quanhou_jiage}"
                 formatted_content += f"{price_info}\n"
-            elif original_price: # Fallback if only original price
+            elif original_price: # 如果只有原价则使用原价
                 formatted_content += f"💰 价格: ¥{original_price}\n"
 
             if coupon_info:
@@ -465,26 +465,26 @@ class JDRebate(PluginBase):
             parsed_data = await self._parse_api_response(api_json_result)
 
             if not parsed_data:
-                logger.warning("convert_link_official: _parse_api_response returned None.")
+                logger.warning("convert_link_official: _parse_api_response返回None。")
                 return None
 
-            # Priority: shorturl, then clickURL (from minimal), then coupon_click_url/item_url (from full)
+            # 优先级：shorturl, 然后是clickURL（最小化），然后是coupon_click_url/item_url（完整）
             if parsed_data.get("shorturl"):
                 return parsed_data.get("shorturl")
 
             if parsed_data.get("_is_minimal") and parsed_data.get("clickURL"):
-                logger.debug("convert_link_official: Using clickURL as fallback for minimal response.")
+                logger.debug("convert_link_official: 使用clickURL作为最小响应的备选。")
                 return parsed_data.get("clickURL")
 
-            if not parsed_data.get("_is_minimal"): # Rich data structure
+            if not parsed_data.get("_is_minimal"): # 丰富的数据结构
                 if parsed_data.get("coupon_click_url"):
-                    logger.debug("convert_link_official: Using coupon_click_url as fallback.")
+                    logger.debug("convert_link_official: 使用coupon_click_url作为备选。")
                     return parsed_data.get("coupon_click_url")
                 if parsed_data.get("item_url"):
-                    logger.debug("convert_link_official: Using item_url as fallback.")
+                    logger.debug("convert_link_official: 使用item_url作为备选。")
                     return parsed_data.get("item_url")
 
-            logger.warning(f"convert_link_official: Parsed API data for {link} did not contain any usable URL.")
+            logger.warning(f"convert_link_official: {link}的解析API数据不包含任何可用的URL。")
             return None
 
         except Exception as e:
