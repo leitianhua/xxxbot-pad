@@ -28,6 +28,9 @@ class ToolMsgForwarder(PluginBase):
         }
         logger.info(f"[ToolMsgForwarder] 插件初始化")
         self._load_config()
+        
+        # 尝试加载JD转链功能
+        self._init_jd_converter()
 
     def _load_config(self):
         """从 config.toml 加载配置"""
@@ -77,6 +80,9 @@ class ToolMsgForwarder(PluginBase):
             
             # 检查并打印规则详情（调试用）
             self._log_rules_details()
+            
+            # 每次重载配置时都加载SecondProcessor
+            self._load_second_processor()
 
         except Exception as e:
             logger.error(f"[ToolMsgForwarder] 加载配置文件 {config_path} 时发生错误: {e}")
@@ -296,9 +302,9 @@ class ToolMsgForwarder(PluginBase):
         
         # 使用真实换行符而不是\n字符串
         if is_group:
-            return f"[转发自群聊 {from_name} (由 {sender_name} 发送)]:\n"
+            return f"[转发自群聊 {from_name} (由 {sender_name} 发送)]:\n\n"
         else:
-            return f"[转发自 {from_name}]:\n"
+            return f"[转发自 {from_name}]:\n\n"
 
     async def _get_display_names(self, bot, message: dict) -> dict:
         """简化版本，不再获取名称信息"""
@@ -348,14 +354,34 @@ class ToolMsgForwarder(PluginBase):
         """
         if hook_point not in self.msg_processors:
             return message
+        
+        # 添加详细日志，特别关注before_forward
+        if hook_point == "before_forward":
+            processor_names = [p.__name__ for p in self.msg_processors[hook_point]]
+            logger.warning(f"[ToolMsgForwarder] 调用before_forward钩子，共{len(processor_names)}个处理器: {processor_names}")
+            
+            # 检查消息内容
+            if isinstance(message, dict) and "content_to_send" in message:
+                logger.warning(f"[ToolMsgForwarder] before_forward处理的内容: {message.get('content_to_send', '')[:100]}...")
             
         current_message = message
         for processor in self.msg_processors[hook_point]:
             try:
+                # 添加处理器调用日志
+                if hook_point == "before_forward":
+                    logger.warning(f"[ToolMsgForwarder] 执行before_forward处理器: {processor.__name__}")
+                
                 result = await processor(bot, current_message, rule)
+                
                 if result is None:
                     logger.debug(f"[ToolMsgForwarder] {hook_point}处理器 {processor.__name__} 拦截了消息")
                     return None
+                
+                # 检查处理结果
+                if hook_point == "before_forward" and isinstance(result, dict) and "content_to_send" in result:
+                    if result["content_to_send"] != current_message.get("content_to_send", ""):
+                        logger.warning(f"[ToolMsgForwarder] 处理器{processor.__name__}修改了内容: {result['content_to_send'][:100]}...")
+                
                 current_message = result
             except Exception as e:
                 logger.error(f"[ToolMsgForwarder] {hook_point}处理器 {processor.__name__} 执行出错: {e}")
@@ -591,5 +617,175 @@ class ToolMsgForwarder(PluginBase):
         async def send_video_action(b, to_wxid, content):
             await b.send_video_message(to_wxid, content)
         return await self._process_forwarding(bot, message, "Video", "video_rules", send_video_action, is_media=True)
+
+    def _load_second_processor(self):
+        """加载并注册SecondProcessor处理器"""
+        logger.warning(f"[ToolMsgForwarder] 开始加载SecondProcessor...")
+        
+        try:
+            # 清除之前可能存在的处理器
+            # 记录当前处理器名称，用于检测重复
+            old_processors = []
+            if "before_forward" in self.msg_processors:
+                old_processors = [p.__name__ for p in self.msg_processors.get("before_forward", [])]
+                logger.warning(f"[ToolMsgForwarder] 当前before_forward处理器: {old_processors}")
+                
+            # 清空处理器列表
+            self.msg_processors["before_forward"] = []
+            logger.warning(f"[ToolMsgForwarder] 已清空before_forward处理器")
+            
+            try:
+                # 使用get_processor函数获取最新的SecondProcessor实例
+                from . import get_processor, SECOND_PROCESSOR_VERSION
+                second_processor = get_processor()
+                
+                logger.warning(f"[ToolMsgForwarder] 已获取SecondProcessor实例，版本: {SECOND_PROCESSOR_VERSION}")
+                
+                # 确保使用配置文件中的设置
+                config_path = os.path.join(os.path.dirname(__file__), "config.toml")
+                if os.path.exists(config_path):
+                    logger.warning(f"[ToolMsgForwarder] 主配置文件存在: {os.path.abspath(config_path)}")
+                    # 重新加载配置
+                    if hasattr(second_processor, '_load_config') and callable(second_processor._load_config):
+                        second_processor._load_config()
+                        logger.warning(f"[ToolMsgForwarder] 已重新加载SecondProcessor配置")
+                else:
+                    logger.warning(f"[ToolMsgForwarder] 主配置文件不存在: {os.path.abspath(config_path)}")
+                
+                # 调用注册方法
+                logger.warning("[ToolMsgForwarder] 调用register_to_forwarder方法")
+                success = second_processor.register_to_forwarder(self)
+                
+                if success:
+                    logger.warning(f"[ToolMsgForwarder] SecondProcessor注册成功，版本: {SECOND_PROCESSOR_VERSION}")
+                else:
+                    logger.warning("[ToolMsgForwarder] SecondProcessor注册失败")
+                    
+                # 检查注册的处理器，确保没有重复
+                if "before_forward" in self.msg_processors:
+                    current_processors = [p.__name__ for p in self.msg_processors.get("before_forward", [])]
+                    logger.warning(f"[ToolMsgForwarder] 当前before_forward处理器数量: {len(self.msg_processors['before_forward'])}")
+                    logger.warning(f"[ToolMsgForwarder] before_forward处理器列表: {current_processors}")
+                    
+                    # 检查重复
+                    duplicates = []
+                    seen = set()
+                    for p_name in current_processors:
+                        if p_name in seen:
+                            duplicates.append(p_name)
+                        else:
+                            seen.add(p_name)
+                    
+                    if duplicates:
+                        logger.warning(f"[ToolMsgForwarder] 检测到重复处理器: {duplicates}，尝试移除")
+                        # 创建新的处理器列表，保留每个处理器的第一个实例
+                        unique_processors = []
+                        seen_names = set()
+                        for p in self.msg_processors["before_forward"]:
+                            if p.__name__ not in seen_names:
+                                unique_processors.append(p)
+                                seen_names.add(p.__name__)
+                                
+                        # 更新处理器列表
+                        self.msg_processors["before_forward"] = unique_processors
+                        logger.warning(f"[ToolMsgForwarder] 移除重复处理器后的数量: {len(self.msg_processors['before_forward'])}")
+            except ImportError as e:
+                logger.error(f"[ToolMsgForwarder] 无法导入SecondProcessor模块: {e}")
+                # 回退到直接使用京东转链功能
+                self._init_jd_converter()
+        
+        except Exception as e:
+            logger.error(f"[ToolMsgForwarder] 加载SecondProcessor失败: {e}")
+            import traceback
+            logger.error(f"[ToolMsgForwarder] 错误堆栈: {traceback.format_exc()}")
+            # 错误发生时，回退到直接初始化
+            self._init_jd_converter()
+
+    def _init_jd_converter(self):
+        """初始化京东转链处理器"""
+        try:
+            logger.warning("[ToolMsgForwarder] 尝试注册京东转链处理器")
+            # 确保使用配置文件中的设置
+            config_path = os.path.join(os.path.dirname(__file__), "config.toml")
+            second_processor_enabled = False
+            jd_rebate_config = None
+            
+            if os.path.exists(config_path):
+                try:
+                    with open(config_path, "rb") as f:
+                        config_data = tomllib.load(f)
+                    
+                    # 检查配置是否启用了二次处理器
+                    if "ToolMsgForwarder" in config_data and "second_processor" in config_data["ToolMsgForwarder"]:
+                        sp_config = config_data["ToolMsgForwarder"]["second_processor"]
+                        second_processor_enabled = sp_config.get("enable", False)
+                        logger.warning(f"[ToolMsgForwarder] 配置中二次处理器启用状态: {second_processor_enabled}")
+                        
+                        # 提取京东转链配置
+                        if "jd_rebate" in sp_config:
+                            jd_rebate_config = sp_config["jd_rebate"]
+                            logger.warning(f"[ToolMsgForwarder] 找到京东转链配置: {jd_rebate_config}")
+                            
+                            # 特别检查prepend_converted_tag
+                            if "prepend_converted_tag" in jd_rebate_config:
+                                logger.warning(f"[ToolMsgForwarder] 配置中的prepend_converted_tag: {jd_rebate_config['prepend_converted_tag']}, 类型: {type(jd_rebate_config['prepend_converted_tag'])}")
+                except Exception as e:
+                    logger.error(f"[ToolMsgForwarder] 读取配置文件失败: {e}")
+            
+            if not second_processor_enabled:
+                logger.warning("[ToolMsgForwarder] 配置中未启用二次处理器，跳过")
+                return
+            
+            # 使用导入的转链处理器
+            from .SecondProcessor import SecondProcessor
+            processor = SecondProcessor()
+            
+            # 直接设置配置，避免读取文件
+            if jd_rebate_config:
+                logger.warning("[ToolMsgForwarder] 直接设置京东转链配置")
+                if not hasattr(processor, 'config') or processor.config is None:
+                    processor.config = {
+                        "enable": True,
+                        "jd_rebate": {}
+                    }
+                
+                # 复制配置，并确保布尔值类型正确
+                for key, value in jd_rebate_config.items():
+                    # 特殊处理布尔值
+                    if key == "prepend_converted_tag":
+                        if isinstance(value, str):
+                            if value.lower() == "true":
+                                processor.config["jd_rebate"][key] = True
+                            elif value.lower() == "false":
+                                processor.config["jd_rebate"][key] = False
+                            else:
+                                processor.config["jd_rebate"][key] = bool(value)
+                        else:
+                            processor.config["jd_rebate"][key] = bool(value)
+                        logger.warning(f"[ToolMsgForwarder] 设置prepend_converted_tag: {value} -> {processor.config['jd_rebate'][key]}, 类型: {type(processor.config['jd_rebate'][key])}")
+                    else:
+                        processor.config["jd_rebate"][key] = value
+                        logger.warning(f"[ToolMsgForwarder] 设置配置项: {key} = {value}, 类型: {type(value)}")
+                
+                # 特别检查prepend_converted_tag
+                if "prepend_converted_tag" in processor.config["jd_rebate"]:
+                    logger.warning(f"[ToolMsgForwarder] 设置后的prepend_converted_tag: {processor.config['jd_rebate']['prepend_converted_tag']}, 类型: {type(processor.config['jd_rebate']['prepend_converted_tag'])}")
+                
+                # 日志输出最终配置
+                logger.warning(f"[ToolMsgForwarder] 直接设置后的京东转链配置: appkey='{processor.config['jd_rebate'].get('appkey', '')}', union_id='{processor.config['jd_rebate'].get('union_id', '')}'")
+                logger.warning(f"[ToolMsgForwarder] 完整的jd_rebate配置: {processor.config['jd_rebate']}")
+            
+            # 注册处理器
+            self.register_processor("before_forward", processor.convert_links)
+            logger.warning("[ToolMsgForwarder] 成功注册京东转链处理器!")
+            
+            # 检查处理器
+            if "before_forward" in self.msg_processors:
+                processor_names = [p.__name__ for p in self.msg_processors.get("before_forward", [])]
+                logger.warning(f"[ToolMsgForwarder] 当前before_forward处理器: {processor_names}")
+        except Exception as e:
+            logger.error(f"[ToolMsgForwarder] 注册京东转链处理器失败: {e}")
+            import traceback
+            logger.error(f"[ToolMsgForwarder] 错误堆栈: {traceback.format_exc()}")
 
 
