@@ -1,0 +1,21 @@
+[basic]
+enable = true     # 总开关，设为false将完全禁用插件所有转发功能
+priority = 99     # 插件优先级，值越小优先级越高
+
+appkey = "2a77607fa088417a8fcb257d1fbb3088"  # 折淘客的对接秘钥appkey
+sid = "185073"    # 折淘客的sid参数
+union_id = "2036757202"  # 京东联盟ID
+pid = "mm_375930105_2518750017_111777500003"  # 淘宝联盟pid
+
+# 群组/用户 控制模式
+# 可选值:
+#   "all":       允许所有群聊和私聊 (默认)。
+#   "whitelist": 仅允许在下方 `group_list` 名单中指定的群聊或用户。
+#   "blacklist": 允许所有群聊和私聊，但会排除下方 `group_list` 名单中指定的群聊或用户。
+group_mode = "all"
+
+group_list = [
+    "47410316718@chatroom",
+    "wxid_l4u1u9bgq5u022"
+]
+
