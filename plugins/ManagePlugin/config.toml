@@ -3,9 +3,9 @@
 priority = 99
 
 [ManagePlugin.commands]
-load_plugin = ["加载插件", "插件加载"]
+load_plugin = ["加载插件", "插件加载", "加载"]
 load_all_plugins = ["加载所有插件", "所有插件加载"]
-unload_plugin = ["卸载插件", "插件卸载"]
+unload_plugin = ["卸载插件", "插件卸载", "插件"]
 unload_all_plugins = ["卸载所有插件", "所有插件卸载"]
 reload_plugin = ["重载插件", "插件重载"]
 reload_all_plugins = ["重载所有插件", "所有插件重载"]

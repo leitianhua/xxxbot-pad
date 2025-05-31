@@ -11,6 +11,10 @@ from loguru import logger
 from WechatAPI import WechatAPIClient
 from utils.decorators import on_text_message
 from utils.plugin_base import PluginBase
+import urllib3
+
+# 禁用SSL警告
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class ToolLinkRebate(PluginBase):
@@ -105,7 +109,7 @@ class ToolLinkRebate(PluginBase):
 
         # 使用折淘客API进行批量转链
         converted_content = self.convert_links(content)
-        
+
         if converted_content and converted_content != content:
             # 如果转换成功且内容不同，发送转换后的内容
             await bot.send_text_message(from_user, converted_content)
@@ -117,24 +121,23 @@ class ToolLinkRebate(PluginBase):
     def convert_links(self, text: str) -> str:
         """
         调用折淘客API进行批量转链
-        API文档: https://api.zhetaoke.com:10001/api/open_gaoyongzhuanlian_tkl_piliang.ashx
         """
         try:
-            url = "https://api.zhetaoke.com:10001/api/open_gaoyongzhuanlian_tkl_piliang.ashx"
+            url = "https://api.zhetaoke.cn:10001/api/open_gaoyongzhuanlian_tkl_piliang.ashx"
 
             # 必填参数
             params = {
                 "appkey": self.appkey,  # 折淘客的对接秘钥appkey
                 "sid": self.sid,  # 添加sid参数
-                "unionId": self.union_id, # 京东联盟ID
+                "unionId": self.union_id,  # 京东联盟ID
                 "pid": self.pid,  # 淘宝联盟pid，格式为mm_xxx_xxx_xxx
                 "tkl": urllib.parse.quote(text),  # 需要转换的文本，进行URL编码
             }
 
             logger.info(f"发送转链请求: {url}")
-            
+
             # 发送请求
-            response = requests.get(url, params=params)
+            response = requests.get(url, params=params, verify=False)
 
             # 处理响应
             if response.status_code == 200:

@@ -18,31 +18,25 @@ union_id = "2036757202"  # 京东联盟ID
 pid = "mm_375930105_2518750017_111777500003"  # 淘宝联盟pid，格式为mm_xxx_xxx_xxx
 
 # ==================== 文本消息规则 ====================
-# 规则1: 指定群聊中的特定成员消息转发
+# 线报监听-并转链
 [[ToolMsgForwarder.text_rules]]
-enabled = true                              # 此规则的开关
-name = "转链群"
-from_wxid = "50144964587@chatroom"          # 来源群聊ID
-to_wxids = ["50144964587@chatroom"]          # 转发目标wxid
-prepend_info = true                         # 是否在转发内容前添加来源信息
-
-# 优惠转发
-[[ToolMsgForwarder.text_rules]]
-enabled = true                              # 此规则的开关
-name = "优惠转发"
-from_wxid = "47410316718@chatroom"          # 来源群聊ID
-listen_specific_senders_in_group = ["wxid_l4u1u9bgq5u022"]  # 监听的群成员
-to_wxids = ["50144964587@chatroom"]          # 转发目标wxid
-prepend_info = false                         # 是否在转发内容前添加来源信息
-
-
-# 规则3: 监听整个群的所有消息 (示例)
-[[ToolMsgForwarder.text_rules]]
-enabled = false                             # 暂时禁用
-from_wxid = "87654321@chatroom"             # 来源群聊ID
+enabled = true
+name = "线报监听-小梨相纸"
+from_wxid = "9278245163@chatroom"          # 小梨相纸
 # 不设置listen_specific_senders_in_group则监听群内所有人
-to_wxids = ["wxid_admin123456"]             # 转发给管理员
-prepend_info = true                         # 添加来源信息
+to_wxids = ["48829307931@chatroom"]          # 线报监听群
+prepend_info = true
+
+# 消息群发-转发到其他群
+[[ToolMsgForwarder.text_rules]]
+enabled = true
+name = "消息群发群"
+from_wxid = "9278245163@chatroom"          # 消息群发群
+listen_specific_senders_in_group = ["wxid_l4u1u9bgq5u022"]  # l
+to_wxids = ["9278245163@chatroom"]          # 转发目标:
+prepend_info = false
+
+
 
 # ==================== 图片消息规则 ====================
 # 规则1: 转发某用户的所有图片

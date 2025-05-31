@@ -12,10 +12,10 @@ pid = "mm_375930105_2518750017_111777500003"  # 淘宝联盟pid
 #   "all":       允许所有群聊和私聊 (默认)。
 #   "whitelist": 仅允许在下方 `group_list` 名单中指定的群聊或用户。
 #   "blacklist": 允许所有群聊和私聊，但会排除下方 `group_list` 名单中指定的群聊或用户。
-group_mode = "all"
+group_mode = "whitelist"
 
 group_list = [
-    "47410316718@chatroom",
+    "50144964587@chatroom", # 转链群
     "wxid_l4u1u9bgq5u022"
 ]
 
