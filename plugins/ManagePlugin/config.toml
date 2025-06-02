@@ -1,6 +1,6 @@
 [ManagePlugin]
 # 全局优先级设置 (0-99)，值越高优先级越高
-priority = 99
+priority = 999
 
 [ManagePlugin.commands]
 load_plugin = ["加载插件", "插件加载", "加载"]

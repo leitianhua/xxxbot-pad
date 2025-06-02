@@ -4547,7 +4547,7 @@ except:
     @app.get("/api/system/logs/download", response_class=FileResponse)
     async def api_system_logs_download(request: Request, t: str = None):
         """下载系统日志文件"""
-        logger.info(f"接收到日志下载请求: {request.url}")
+        logger.debug(f"接收到日志下载请求: {request.url}")
 
         # 检查认证状态
         try:
@@ -4586,7 +4586,7 @@ except:
                     logger.error(f"查找日志文件失败 {path_pattern}: {str(glob_err)}")
 
             # 记录找到的日志文件
-            logger.info(f"找到的日志文件: {found_logs}")
+            logger.debug(f"找到的日志文件: {found_logs}")
 
             # 如果没找到日志文件
             if not found_logs:
@@ -4601,7 +4601,7 @@ except:
 
             # 选择最新的日志文件
             latest_log = max(found_logs, key=os.path.getmtime)
-            logger.info(f"准备下载日志文件: {latest_log}")
+            logger.debug(f"准备下载日志文件: {latest_log}")
 
             # 检查文件是否可读
             if not os.access(latest_log, os.R_OK):
@@ -4616,11 +4616,11 @@ except:
 
             # 检查文件大小
             file_size = os.path.getsize(latest_log)
-            logger.info(f"日志文件大小: {file_size} 字节")
+            logger.debug(f"日志文件大小: {file_size} 字节")
 
             # 返回文件响应
             filename = os.path.basename(latest_log)
-            logger.info(f"开始下载日志文件: {filename}")
+            logger.debug(f"开始下载日志文件: {filename}")
 
             return FileResponse(
                 path=latest_log,
@@ -4688,7 +4688,7 @@ except:
 
             # 选择最新的日志文件
             latest_log = max(found_logs, key=os.path.getmtime)
-            logger.info(f"读取日志文件: {latest_log}")
+            logger.debug(f"读取日志文件: {latest_log}")
 
             # 读取日志文件并按行返回
             log_entries = []
@@ -4701,7 +4701,7 @@ except:
                 if limit > 0:
                     lines = lines[-limit:]
 
-                logger.info(f"读取日志行数: {len(lines)}")
+                logger.debug(f"读取日志行数: {len(lines)}")
 
                 for line in lines:
                     line = line.strip()

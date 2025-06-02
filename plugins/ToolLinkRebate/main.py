@@ -5,16 +5,29 @@ import aiohttp
 import tomllib
 import urllib.parse
 import requests
+import asyncio
+import sqlite3
+import datetime
+import traceback
 from typing import List, Dict, Any, Tuple, Optional
 from loguru import logger
 
 from WechatAPI import WechatAPIClient
-from utils.decorators import on_text_message
+from utils.decorators import on_text_message, schedule
 from utils.plugin_base import PluginBase
 import urllib3
 
 # 禁用SSL警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# 全局变量，用于存储bot实例引用
+_bot_instance = None
+
+# 设置bot实例的函数
+def set_bot_instance(bot):
+    global _bot_instance
+    _bot_instance = bot
+    logger.info(f"已设置全局bot实例: {bot}")
 
 
 class ToolLinkRebate(PluginBase):
@@ -22,15 +35,20 @@ class ToolLinkRebate(PluginBase):
     description = "商品转链返利插件 - 自动识别淘宝、京东链接并生成带返利的推广链接"
     author = "lei"
     version = "1.3.0"
+    
+    # 类变量，用于存储定时任务间隔
+    TASK_INTERVAL = 300  # 默认300秒
 
     def __init__(self):
         super().__init__()
         # 获取配置文件路径
         config_path = os.path.join(os.path.dirname(__file__), "config.toml")
+        logger.debug(f"正在加载配置文件: {config_path}")
 
         try:
             with open(config_path, "rb") as f:
                 config = tomllib.load(f)
+            logger.debug(f"配置文件加载成功: {config}")
 
             # 读取基本配置
             basic_config = config.get("basic", {})
@@ -41,6 +59,20 @@ class ToolLinkRebate(PluginBase):
             self.pid = basic_config.get("pid", "")  # 淘宝联盟pid
             self.group_mode = basic_config.get("group_mode", "all")  # 群组控制模式
             self.group_list = basic_config.get("group_list", [])  # 群组/用户列表
+            
+            # 线报监听配置
+            xianbao_config = config.get("xianbao", {})
+            self.xianbao_enable = xianbao_config.get("enable", False)  # 是否启用线报监听
+            self.xianbao_interval = xianbao_config.get("interval", 300)  # 线报监听间隔（秒）
+            # 更新类变量
+            ToolLinkRebate.TASK_INTERVAL = self.xianbao_interval
+            self.xianbao_keywords = xianbao_config.get("keywords", ["得物"])  # 线报关键词
+            self.xianbao_receivers = xianbao_config.get("receivers", [])  # 线报接收者列表
+            # 线报过滤关键词，包含这些关键词的线报将被跳过
+            self.xianbao_filter_keywords = xianbao_config.get("filter_keywords", ["已失效", "已抢完", "已下架"])
+
+            # 记录上次执行时间
+            self.last_execution_time = datetime.datetime.now()
 
             # 编译正则表达式
             self.link_patterns = {
@@ -55,9 +87,60 @@ class ToolLinkRebate(PluginBase):
             logger.success(f"商品转链返利插件配置加载成功")
             logger.info(f"群组控制模式: {self.group_mode}")
             logger.info(f"群组/用户列表: {self.group_list}")
+            
+            if self.xianbao_enable:
+                logger.success(f"线报监听已启用，监听间隔: {self.xianbao_interval}秒")
+                logger.success(f"线报关键词: {self.xianbao_keywords}")
+                logger.success(f"线报接收者: {self.xianbao_receivers}")
+                logger.success(f"线报过滤关键词: {self.xianbao_filter_keywords}")
+                
+                # 初始化线报数据库
+                self._init_xianbao_database()
+            else:
+                logger.warning("线报监听功能未启用")
         except Exception as e:
             logger.error(f"加载商品转链返利插件配置失败: {str(e)}")
+            logger.error(traceback.format_exc())
             self.enable = False
+            self.xianbao_enable = False
+    
+    def _init_xianbao_database(self):
+        """初始化线报数据库"""
+        try:
+            db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "xianbao.db")
+            logger.debug(f"初始化线报数据库: {db_path}")
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            # 创建表（如果不存在）
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS xianbao (
+                code TEXT,
+                add_time TEXT,
+                type TEXT,
+                id TEXT,
+                content TEXT,
+                plat TEXT,
+                pic TEXT PRIMARY KEY,
+                num_id TEXT,
+                plat2 TEXT,
+                type2 TEXT,
+                cid1 TEXT,
+                cid1_name TEXT,
+                cid2 TEXT,
+                cid2_name TEXT,
+                cid3 TEXT,
+                cid3_name TEXT,
+                chunwenzi TEXT
+            )
+            ''')
+            
+            conn.commit()
+            conn.close()
+            logger.success("线报数据库初始化成功")
+        except Exception as e:
+            logger.error(f"初始化线报数据库失败: {str(e)}")
+            logger.error(traceback.format_exc())
 
     @on_text_message(priority=90)
     async def handle_text(self, bot: WechatAPIClient, message: dict):
@@ -108,19 +191,30 @@ class ToolLinkRebate(PluginBase):
         logger.info(f"检测到链接: {found_links}")
 
         # 使用折淘客API进行批量转链
-        converted_content = self.convert_links(content)
+        success, converted_content, error_msg = self.convert_links(content)
 
-        if converted_content and converted_content != content:
-            # 如果转换成功且内容不同，发送转换后的内容
+        # 根据转链结果决定是否发送消息
+        if success:
+            # 转链成功，发送转换后的内容
             await bot.send_text_message(from_user, converted_content)
             logger.success(f"成功发送转链结果到 {from_user}")
+            return False
+        else:
+            # 转链失败，发送错误消息
+            await bot.send_text_message(from_user, f"【转链失败】{error_msg}\n\n{content}")
+            logger.warning(f"转链失败，发送错误消息到 {from_user}: {error_msg}")
             return False
 
         return True
 
-    def convert_links(self, text: str) -> str:
+    def convert_links(self, text: str) -> Tuple[bool, str, str]:
         """
         调用折淘客API进行批量转链
+        
+        返回值:
+        - Tuple[bool, str, str]: (是否成功, 转链内容/原内容, 错误消息)
+          - 成功时: (True, 转链内容, "")
+          - 失败时: (False, 原内容, 错误消息)
         """
         try:
             url = "https://api.zhetaoke.cn:10001/api/open_gaoyongzhuanlian_tkl_piliang.ashx"
@@ -145,23 +239,257 @@ class ToolLinkRebate(PluginBase):
                     result = response.json()
                     logger.info(f"API响应结果: {result}")
                     if result.get("status") == 200:
-                        return result.get("content", "")
+                        converted_content = result.get("content", "")
+                        # 检查转换后的内容是否与原内容不同
+                        if converted_content and converted_content != text:
+                            return True, converted_content, ""
+                        else:
+                            return False, text, "转链后内容无变化"
                     else:
                         error_msg = result.get('content', '未知错误')
                         logger.error(f"转链失败: {result.get('status')}, 消息: {error_msg}")
-                        # 根据不同的错误状态返回不同的提示信息
                         if result.get("status") == 301:
-                            return f"【转链失败】\n\n{text}"
+                            return False, text, "无法识别链接"
                         else:
-                            return f"【转链失败】状态码: {result.get('status')}, {error_msg}\n\n{text}"
+                            return False, text, f"状态码: {result.get('status')}, {error_msg}"
                 except json.JSONDecodeError:
                     logger.error(f"响应解析失败")
-                    return f"【转链失败】响应解析错误\n\n{text}"
+                    return False, text, "响应解析错误"
             else:
                 logger.error(f"请求失败: {response.status_code}")
-                return f"【转链失败】HTTP请求失败: {response.status_code}\n\n{text}"
+                return False, text, f"HTTP请求失败: {response.status_code}"
         except Exception as e:
             logger.error(f"批量转链时发生错误: {str(e)}")
-            import traceback
-            logger.error(f"错误堆栈: {traceback.format_exc()}")
-            return f"【转链失败】系统错误: {str(e)}\n\n{text}"
+            logger.error(traceback.format_exc())
+            return False, text, f"系统错误: {str(e)}"
+    
+    def get_xianbao_data(self, keyword):
+        """获取线报数据"""
+        url = "https://api.zhetaoke.com:20001/api/api_xianbao.ashx"
+
+        # 必填参数
+        params = {
+            "appkey": self.appkey,
+            "id": None,
+            "type": None,
+            "page": 1,
+            "page_size": 1000000,
+            "msg": 1,
+            "interval": 1440,
+            "q": keyword,
+        }
+        
+        try:
+            logger.debug(f"获取线报数据，关键词: {keyword}, 请求URL: {url}, 参数: {params}")
+            # 发送请求，禁用SSL验证
+            response = requests.get(url, params=params, verify=False)
+            
+            # 处理响应
+            if response.status_code == 200:
+                try:
+                    result = response.json()
+                    logger.debug(f"线报API响应: {result}")
+                    if result.get("status") == 200:
+                        data = result.get("msg", [])
+                        logger.debug(f"获取到线报数据 {len(data)} 条")
+                        return data
+                    else:
+                        logger.error(f"获取线报失败: {result.get('status')}, 消息: {result.get('content', '')}")
+                        return []
+                except json.JSONDecodeError:
+                    logger.error("线报响应解析失败")
+                    logger.error(traceback.format_exc())
+                    return []
+            else:
+                logger.error(f"线报请求失败: {response.status_code}")
+                return []
+        except Exception as e:
+            logger.error(f"获取线报数据时发生错误: {str(e)}")
+            logger.error(traceback.format_exc())
+            return []
+    
+    def save_xianbao_to_database(self, data_list):
+        """保存线报数据到数据库，返回新数据列表"""
+        if not data_list:
+            logger.debug("没有线报数据需要保存")
+            return []
+        
+        try:
+            db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "xianbao.db")
+            logger.debug(f"保存线报数据到数据库: {db_path}, 数据条数: {len(data_list)}")
+            
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            new_data_items = []
+            
+            for item in data_list:
+                pic = item.get('pic', '')
+                
+                # 如果pic为空，则跳过该记录
+                if not pic:
+                    logger.debug(f"跳过无图片的线报: {item.get('content', '')[:30]}...")
+                    continue
+                    
+                # 检查记录是否已存在（仅使用pic进行去重）
+                cursor.execute("SELECT 1 FROM xianbao WHERE pic = ?", (pic,))
+                if not cursor.fetchone():
+                    try:
+                        # 插入新记录
+                        cursor.execute('''
+                        INSERT INTO xianbao (
+                            code, add_time, type, id, content, plat, pic, num_id, 
+                            plat2, type2, cid1, cid1_name, cid2, cid2_name, cid3, cid3_name, chunwenzi
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (
+                            item.get('code', ''),
+                            item.get('add_time', ''),
+                            item.get('type', ''),
+                            item.get('id', ''),
+                            item.get('content', ''),
+                            item.get('plat', ''),
+                            pic,
+                            item.get('num_id', ''),
+                            item.get('plat2', ''),
+                            item.get('type2', ''),
+                            item.get('cid1', ''),
+                            item.get('cid1_name', ''),
+                            item.get('cid2', ''),
+                            item.get('cid2_name', ''),
+                            item.get('cid3', ''),
+                            item.get('cid3_name', ''),
+                            item.get('chunwenzi', '')
+                        ))
+                        logger.debug(f"保存新线报: {item.get('content', '')[:30]}...")
+                        new_data_items.append(item)
+                    except sqlite3.IntegrityError as e:
+                        # 如果出现主键冲突，跳过此条记录
+                        logger.warning(f"数据库插入冲突: {str(e)}, 线报内容: {item.get('content', '')[:30]}...")
+                else:
+                    logger.debug(f"线报已存在，跳过: {item.get('content', '')[:30]}...")
+            
+            conn.commit()
+            conn.close()
+            logger.debug(f"线报保存完成，新增 {len(new_data_items)} 条")
+            return new_data_items
+        except Exception as e:
+            logger.error(f"保存线报数据时发生错误: {str(e)}")
+            logger.error(traceback.format_exc())
+            return []
+
+    def format_xianbao_content(self, content):
+        """
+        格式化线报内容：
+        1. 将<br />替换为\n
+        2. 去除图片内容
+        """
+        # 替换<br />为换行符
+        formatted_content = content.replace("<br />", "\n")
+        
+        # 构建消息
+        message = f"【新线报】\n\n{formatted_content}"
+        
+        return message
+
+    def should_filter_xianbao(self, content):
+        """
+        检查线报内容是否包含过滤关键词
+        
+        返回值:
+        - Tuple[bool, str]: (是否应该过滤, 匹配的关键词)
+          - 应该过滤: (True, 匹配的关键词)
+          - 不应该过滤: (False, "")
+        """
+        if not self.xianbao_filter_keywords:
+            return False, ""
+            
+        for keyword in self.xianbao_filter_keywords:
+            if keyword in content:
+                return True, keyword
+                
+        return False, ""
+
+    @schedule(trigger="interval", seconds=5)
+    async def xianbao_monitor_task(self, bot):
+        """线报监听定时任务"""
+        # 计算自上次执行以来经过的时间
+        now = datetime.datetime.now()
+        time_elapsed = (now - self.last_execution_time).total_seconds()
+        
+        # 如果未达到配置的间隔时间，则跳过执行
+        if time_elapsed < self.xianbao_interval:
+            logger.debug(f"线报监听任务触发，但未达到配置的间隔时间 ({time_elapsed:.1f}/{self.xianbao_interval}秒)，跳过执行")
+            return
+            
+        # 更新上次执行时间
+        self.last_execution_time = now
+        
+        logger.info(f"线报监听任务执行，间隔: {self.xianbao_interval}秒")
+        
+        # 如果线报监听功能未启用，直接返回
+        if not self.xianbao_enable:
+            logger.warning("线报监听功能未启用，不执行监听任务")
+            return
+            
+        logger.success("开始执行线报监听任务")
+        
+        # 获取当前时间
+        current_time = now.strftime("%Y-%m-%d %H:%M:%S")
+        logger.info(f"[{current_time}] 开始获取线报数据...")
+        
+        # 确保接收者列表不为空
+        if not self.xianbao_receivers:
+            logger.error("线报接收者列表为空，无法发送线报，请检查配置")
+            return
+            
+        # 遍历所有关键词获取线报
+        for keyword in self.xianbao_keywords:
+            logger.info(f"获取关键词 '{keyword}' 的线报数据")
+            
+            # 调用API获取线报数据
+            xianbao_data = self.get_xianbao_data(keyword)
+            
+            # 保存到数据库并获取新数据列表
+            new_data_items = self.save_xianbao_to_database(xianbao_data)
+            
+            # 处理新线报数据
+            if new_data_items:
+                logger.success(f"[{current_time}] 发现 {len(new_data_items)} 条新线报数据")
+                
+                # 对每条新线报进行转链并发送给接收者
+                for item in new_data_items:
+                    content = item.get('content', '')
+                    if content:
+                        # 检查是否包含过滤关键词
+                        should_filter, filter_keyword = self.should_filter_xianbao(content)
+                        if should_filter:
+                            logger.info(f"线报包含过滤关键词 '{filter_keyword}'，跳过: {content}")
+                            continue
+                            
+                        logger.info(f"处理线报内容: {content}")
+                        # 转链处理
+                        success, converted_content, error_msg = self.convert_links(content)
+                        
+                        # 只有转链成功时才发送消息
+                        if success:
+                            # 构建完整的线报消息，使用格式化函数
+                            message = self.format_xianbao_content(converted_content)
+                            
+                            logger.info(f"准备发送线报: {message}")
+                            
+                            # 发送给所有接收者
+                            for receiver in self.xianbao_receivers:
+                                try:
+                                    logger.debug(f"发送线报到 {receiver}")
+                                    await bot.send_text_message(receiver, message)
+                                    logger.success(f"成功发送线报到 {receiver}")
+                                except Exception as e:
+                                    logger.error(f"发送线报到 {receiver} 失败: {str(e)}")
+                                    logger.error(traceback.format_exc())
+                                # 避免发送过快
+                                await asyncio.sleep(1)
+                        else:
+                            logger.warning(f"线报转链失败，不发送消息: {error_msg}")
+            else:
+                logger.info(f"[{current_time}] 没有新数据")
+                
+        logger.info("线报监听任务执行完毕")

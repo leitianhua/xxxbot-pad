@@ -19,3 +19,11 @@ group_list = [
     "wxid_l4u1u9bgq5u022"
 ]
 
+
+# 线报监听配置
+[xianbao]
+enable = true                             # 是否启用线报监听功能
+interval = 30                             # 线报监听间隔（秒）
+keywords = ["得物", "薅羊毛"]        # 线报关键词列表
+receivers = ["48829307931@chatroom"]        # 线报接收者列表，填写微信ID
+filter_keywords = ["楼上"]
