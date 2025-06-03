@@ -430,17 +430,50 @@
                                 <option value="warning">Warning及以上</option>
                                 <option value="error">Error及以上</option>
                             </select>
+                            <select class="form-select form-select-sm" id="simple-log-limit" style="max-width: 150px;">
+                                <option value="500">显示500行</option>
+                                <option value="1000" selected>显示1000行</option>
+                                <option value="2000">显示2000行</option>
+                                <option value="5000">显示5000行</option>
+                            </select>
                             <button class="btn btn-sm btn-outline-secondary" id="btn-simple-copy-logs">
                                 <i class="bi bi-clipboard"></i> 复制
                             </button>
                             <a href="/api/system/logs/download" class="btn btn-sm btn-outline-secondary" download>
                                 <i class="bi bi-download"></i> 下载
                             </a>
+                            <button class="btn btn-sm btn-outline-danger" id="btn-toggle-auto-refresh">
+                                <span id="auto-refresh-text">停止自动刷新</span>
+                            </button>
+                        </div>
+                        <div id="log-pagination" class="d-flex justify-content-between align-items-center mt-2">
+                            <div class="btn-group">
+                                <button class="btn btn-sm btn-outline-primary" id="btn-prev-page" disabled>
+                                    <i class="bi bi-chevron-left"></i> 上一页
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary" id="btn-next-page" disabled>
+                                    下一页 <i class="bi bi-chevron-right"></i>
+                                </button>
+                            </div>
+                            <div class="d-flex align-items-center">
+                                <span class="me-2">页码:</span>
+                                <input type="number" class="form-control form-control-sm" id="current-page" value="1" min="1" style="width: 70px;">
+                                <span class="mx-2">/ <span id="total-pages">1</span></span>
+                            </div>
+                            <div class="text-muted small">
+                                <span id="log-stats">加载中...</span>
+                            </div>
                         </div>
                     </div>
                     
                     <!-- 日志查看器 -->
                     <pre id="simple-log-viewer">正在加载日志...</pre>
+                    <div id="log-loading" class="text-center d-none">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">加载中...</span>
+                        </div>
+                        <p class="mt-2">加载日志中，请稍候...</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -510,18 +543,34 @@
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         // 获取系统日志函数
-        function getSimpleLogs() {
+        let allLogData = [];
+        let currentPage = 1;
+        let logsPerPage = 1000;
+        let isLoading = false;
+        let autoRefreshEnabled = true;
+        let autoRefreshInterval = null;
+        
+        function getSimpleLogs(showLatest = false) {
+            if (isLoading) return;
+            
             const logViewer = document.getElementById('simple-log-viewer');
+            const logLoading = document.getElementById('log-loading');
             
             if (!logViewer) {
                 console.error('找不到日志查看器元素!');
                 return;
             }
             
+            // 显示加载状态
             logViewer.textContent = '正在加载日志...';
+            logLoading.classList.remove('d-none');
+            isLoading = true;
             
             const logLevel = document.getElementById('simple-log-level')?.value || 'all';
-            const queryString = logLevel !== 'all' ? `?log_level=${logLevel}` : '';
+            logsPerPage = parseInt(document.getElementById('simple-log-limit')?.value || '1000');
+            
+            // 添加limit参数限制返回的日志行数
+            const queryString = logLevel !== 'all' ? `?log_level=${logLevel}&limit=5000` : '?limit=5000';
             
             console.log(`请求日志: /api/system/logs${queryString}`);
             
@@ -531,6 +580,10 @@
                     return response.json();
                 })
                 .then(data => {
+                    // 隐藏加载状态
+                    logLoading.classList.add('d-none');
+                    isLoading = false;
+                    
                     console.log('收到日志数据, 条数:', data.logs?.length || 0);
                     
                     if (!data.success) {
@@ -543,26 +596,176 @@
                         return;
                     }
                     
-                    let logContent = '';
-                    data.logs.forEach(log => {
-                        let line = '';
-                        if (log.timestamp) {
-                            line += `${log.timestamp} | `;
-                        }
-                        if (log.level) {
-                            line += `${log.level.toUpperCase()} | `;
-                        }
-                        line += log.message || log.raw || '';
-                        logContent += line + '\n';
-                    });
+                    // 保存所有日志数据
+                    allLogData = data.logs;
                     
-                    logViewer.textContent = logContent;
-                    logViewer.scrollTop = logViewer.scrollHeight;
+                    // 更新分页信息
+                    updatePaginationInfo(data);
+                    
+                    // 如果需要显示最新内容或是自动刷新，则跳转到最后一页
+                    if (showLatest) {
+                        const totalPages = Math.ceil(allLogData.length / logsPerPage);
+                        currentPage = totalPages;
+                    }
+                    
+                    // 显示当前页的日志
+                    showCurrentPage(showLatest);
                 })
                 .catch(error => {
+                    // 隐藏加载状态
+                    logLoading.classList.add('d-none');
+                    isLoading = false;
+                    
                     console.error('获取日志出错:', error);
                     logViewer.textContent = `获取日志出错: ${error.message}`;
                 });
+        }
+        
+        // 更新分页信息
+        function updatePaginationInfo(data) {
+            const totalLogs = allLogData.length;
+            const totalPages = Math.ceil(totalLogs / logsPerPage);
+            
+            // 更新页码信息
+            document.getElementById('total-pages').textContent = totalPages;
+            
+            // 确保当前页在有效范围内
+            if (currentPage > totalPages) {
+                currentPage = totalPages;
+            }
+            if (currentPage < 1) {
+                currentPage = 1;
+            }
+            
+            document.getElementById('current-page').value = currentPage;
+            
+            // 更新按钮状态
+            document.getElementById('btn-prev-page').disabled = currentPage <= 1;
+            document.getElementById('btn-next-page').disabled = currentPage >= totalPages;
+            
+            // 更新日志统计信息
+            const fileSize = data.pagination?.file_size_mb || 
+                (data.log_path ? `文件: ${data.log_path}` : '');
+                
+            document.getElementById('log-stats').textContent = 
+                `共 ${totalLogs} 行日志${fileSize ? ` (${fileSize} MB)` : ''}, 当前页 ${currentPage}/${totalPages}`;
+        }
+        
+        // 显示当前页的日志
+        function showCurrentPage(scrollToBottom = false) {
+            const logViewer = document.getElementById('simple-log-viewer');
+            if (!logViewer) return;
+            
+            const startIndex = (currentPage - 1) * logsPerPage;
+            const endIndex = Math.min(startIndex + logsPerPage, allLogData.length);
+            
+            // 获取当前页的日志
+            const currentLogs = allLogData.slice(startIndex, endIndex);
+            
+            // 如果日志太多，使用虚拟滚动
+            if (allLogData.length > 10000) {
+                renderVirtualLogs(scrollToBottom);
+                return;
+            }
+            
+            // 渲染日志内容
+            let logContent = '';
+            
+            // 添加分页提示
+            if (allLogData.length > logsPerPage) {
+                logContent += `--- 显示 ${startIndex + 1} 到 ${endIndex} 行，共 ${allLogData.length} 行 ---\n\n`;
+            }
+            
+            currentLogs.forEach(log => {
+                let line = '';
+                if (log.timestamp) {
+                    line += `${log.timestamp} | `;
+                }
+                if (log.level) {
+                    line += `${log.level.toUpperCase()} | `;
+                }
+                line += log.message || log.raw || '';
+                logContent += line + '\n';
+            });
+            
+            logViewer.textContent = logContent;
+            
+            // 根据参数决定是否滚动到底部
+            if (scrollToBottom) {
+                logViewer.scrollTop = logViewer.scrollHeight;
+            } else {
+                logViewer.scrollTop = 0;
+            }
+        }
+        
+        // 使用虚拟滚动渲染大量日志
+        function renderVirtualLogs(scrollToBottom = false) {
+            const logViewer = document.getElementById('simple-log-viewer');
+            if (!logViewer) return;
+            
+            const startIndex = (currentPage - 1) * logsPerPage;
+            const endIndex = Math.min(startIndex + logsPerPage, allLogData.length);
+            
+            // 获取当前页的日志
+            const currentLogs = allLogData.slice(startIndex, endIndex);
+            
+            let logContent = `--- 日志文件较大，显示第 ${startIndex + 1} 到 ${endIndex} 行，共 ${allLogData.length} 行 ---\n\n`;
+            
+            // 只渲染当前页的日志
+            currentLogs.forEach(log => {
+                let line = '';
+                if (log.timestamp) {
+                    line += `${log.timestamp} | `;
+                }
+                if (log.level) {
+                    line += `${log.level.toUpperCase()} | `;
+                }
+                line += log.message || log.raw || '';
+                logContent += line + '\n';
+            });
+            
+            logViewer.textContent = logContent;
+            
+            // 根据参数决定是否滚动到底部
+            if (scrollToBottom) {
+                logViewer.scrollTop = logViewer.scrollHeight;
+            } else {
+                logViewer.scrollTop = 0;
+            }
+        }
+        
+        // 切换自动刷新状态
+        function toggleAutoRefresh() {
+            const button = document.getElementById('btn-toggle-auto-refresh');
+            const textSpan = document.getElementById('auto-refresh-text');
+            
+            autoRefreshEnabled = !autoRefreshEnabled;
+            
+            if (autoRefreshEnabled) {
+                // 启用自动刷新
+                button.classList.remove('btn-outline-success');
+                button.classList.add('btn-outline-danger');
+                textSpan.textContent = '停止自动刷新';
+                
+                // 立即刷新一次
+                getSimpleLogs(true);
+                
+                // 设置定时刷新
+                autoRefreshInterval = setInterval(() => {
+                    getSimpleLogs(true);
+                }, 30000);
+            } else {
+                // 禁用自动刷新
+                button.classList.remove('btn-outline-danger');
+                button.classList.add('btn-outline-success');
+                textSpan.textContent = '开始自动刷新';
+                
+                // 清除定时刷新
+                if (autoRefreshInterval) {
+                    clearInterval(autoRefreshInterval);
+                    autoRefreshInterval = null;
+                }
+            }
         }
         
         // 安全地添加事件监听器
@@ -578,17 +781,58 @@
         }
         
         // 获取初始日志
-        getSimpleLogs();
+        getSimpleLogs(true);
         
         // 添加事件监听器
         safeAddEventListener('btn-simple-refresh-logs', 'click', function() {
             console.log('手动刷新日志');
-            getSimpleLogs();
+            getSimpleLogs(true);
         });
         
         safeAddEventListener('simple-log-level', 'change', function() {
             console.log('日志级别已更改:', this.value);
-            getSimpleLogs();
+            currentPage = 1; // 重置页码
+            getSimpleLogs(true);
+        });
+        
+        safeAddEventListener('simple-log-limit', 'change', function() {
+            console.log('日志行数已更改:', this.value);
+            logsPerPage = parseInt(this.value) || 1000;
+            // 不需要重新请求，只需要重新计算分页
+            updatePaginationInfo({});
+            showCurrentPage();
+        });
+        
+        safeAddEventListener('btn-prev-page', 'click', function() {
+            if (currentPage > 1) {
+                currentPage--;
+                // 不需要重新请求，只需要显示上一页
+                updatePaginationInfo({});
+                showCurrentPage();
+            }
+        });
+        
+        safeAddEventListener('btn-next-page', 'click', function() {
+            const totalPages = Math.ceil(allLogData.length / logsPerPage);
+            if (currentPage < totalPages) {
+                currentPage++;
+                // 不需要重新请求，只需要显示下一页
+                updatePaginationInfo({});
+                showCurrentPage();
+            }
+        });
+        
+        safeAddEventListener('current-page', 'change', function() {
+            const totalPages = Math.ceil(allLogData.length / logsPerPage);
+            const newPage = parseInt(this.value) || 1;
+            if (newPage >= 1 && newPage <= totalPages && newPage !== currentPage) {
+                currentPage = newPage;
+                // 不需要重新请求，只需要显示指定页
+                updatePaginationInfo({});
+                showCurrentPage();
+            } else {
+                this.value = currentPage; // 恢复原值
+            }
         });
         
         safeAddEventListener('btn-simple-copy-logs', 'click', function() {
@@ -598,8 +842,16 @@
                 .catch(err => console.error('复制失败:', err));
         });
         
-        // 每30秒刷新一次日志
-        setInterval(getSimpleLogs, 30000);
+        safeAddEventListener('btn-toggle-auto-refresh', 'click', function() {
+            toggleAutoRefresh();
+        });
+        
+        // 设置自动刷新
+        autoRefreshInterval = setInterval(() => {
+            if (autoRefreshEnabled) {
+                getSimpleLogs(true);
+            }
+        }, 30000);
         
         // 系统信息获取函数
         function getSystemInfo() {
