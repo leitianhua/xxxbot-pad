@@ -36,8 +36,6 @@ class ToolLinkRebate(PluginBase):
     author = "lei"
     version = "1.3.0"
     
-    # 类变量，用于存储定时任务间隔
-    TASK_INTERVAL = 300  # 默认300秒
 
     def __init__(self):
         super().__init__()
@@ -64,12 +62,10 @@ class ToolLinkRebate(PluginBase):
             xianbao_config = config.get("xianbao", {})
             self.xianbao_enable = xianbao_config.get("enable", False)  # 是否启用线报监听
             self.xianbao_interval = xianbao_config.get("interval", 300)  # 线报监听间隔（秒）
-            # 更新类变量
-            ToolLinkRebate.TASK_INTERVAL = self.xianbao_interval
             self.xianbao_keywords = xianbao_config.get("keywords", ["得物"])  # 线报关键词
             self.xianbao_receivers = xianbao_config.get("receivers", [])  # 线报接收者列表
             # 线报过滤关键词，包含这些关键词的线报将被跳过
-            self.xianbao_filter_keywords = xianbao_config.get("filter_keywords", ["已失效", "已抢完", "已下架"])
+            self.xianbao_filter_keywords = xianbao_config.get("filter_keywords", [])
 
             # 记录上次执行时间
             self.last_execution_time = datetime.datetime.now()
@@ -131,15 +127,55 @@ class ToolLinkRebate(PluginBase):
                 cid2_name TEXT,
                 cid3 TEXT,
                 cid3_name TEXT,
-                chunwenzi TEXT
+                chunwenzi TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             ''')
+            
+            # 尝试清理7天前的数据
+            self._clean_old_xianbao_data(conn)
             
             conn.commit()
             conn.close()
             logger.success("线报数据库初始化成功")
         except Exception as e:
             logger.error(f"初始化线报数据库失败: {str(e)}")
+            logger.error(traceback.format_exc())
+
+    def _clean_old_xianbao_data(self, conn=None):
+        """清理7天前的线报数据"""
+        try:
+            # 如果没有传入连接，则创建新连接
+            close_conn = False
+            if conn is None:
+                db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "xianbao.db")
+                conn = sqlite3.connect(db_path)
+                close_conn = True
+                
+            cursor = conn.cursor()
+            
+            # 获取7天前的日期
+            seven_days_ago = (datetime.datetime.now() - datetime.timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+            
+            # 查询要删除的记录数量
+            cursor.execute("SELECT COUNT(*) FROM xianbao WHERE created_at < ?", (seven_days_ago,))
+            count = cursor.fetchone()[0]
+            
+            # 删除7天前的数据
+            cursor.execute("DELETE FROM xianbao WHERE created_at < ?", (seven_days_ago,))
+            
+            # 提交事务
+            conn.commit()
+            
+            if count > 0:
+                logger.info(f"已清理 {count} 条7天前的线报数据")
+            
+            # 如果是新创建的连接，则关闭
+            if close_conn:
+                conn.close()
+                
+        except Exception as e:
+            logger.error(f"清理线报数据时发生错误: {str(e)}")
             logger.error(traceback.format_exc())
 
     @on_text_message(priority=90)
@@ -185,10 +221,8 @@ class ToolLinkRebate(PluginBase):
                 found_links[link_type] = matches
 
         if not found_links:
-            logger.debug("没有找到需要处理的链接")
             return True
 
-        logger.info(f"检测到链接: {found_links}")
 
         # 使用折淘客API进行批量转链
         success, converted_content, error_msg = self.convert_links(content)
@@ -197,12 +231,10 @@ class ToolLinkRebate(PluginBase):
         if success:
             # 转链成功，发送转换后的内容
             await bot.send_text_message(from_user, converted_content)
-            logger.success(f"成功发送转链结果到 {from_user}")
             return False
         else:
             # 转链失败，发送错误消息
             await bot.send_text_message(from_user, f"【转链失败】{error_msg}\n\n{content}")
-            logger.warning(f"转链失败，发送错误消息到 {from_user}: {error_msg}")
             return False
 
         return True
@@ -228,8 +260,6 @@ class ToolLinkRebate(PluginBase):
                 "tkl": urllib.parse.quote(text),  # 需要转换的文本，进行URL编码
             }
 
-            logger.info(f"发送转链请求: {url}")
-
             # 发送请求
             response = requests.get(url, params=params, verify=False)
 
@@ -237,7 +267,6 @@ class ToolLinkRebate(PluginBase):
             if response.status_code == 200:
                 try:
                     result = response.json()
-                    logger.info(f"API响应结果: {result}")
                     if result.get("status") == 200:
                         converted_content = result.get("content", "")
                         # 检查转换后的内容是否与原内容不同
@@ -273,14 +302,13 @@ class ToolLinkRebate(PluginBase):
             "id": None,
             "type": None,
             "page": 1,
-            "page_size": 1000000,
+            "page_size": 200,
             "msg": 1,
             "interval": 1440,
             "q": keyword,
         }
         
         try:
-            logger.debug(f"获取线报数据，关键词: {keyword}, 请求URL: {url}, 参数: {params}")
             # 发送请求，禁用SSL验证
             response = requests.get(url, params=params, verify=False)
             
@@ -288,10 +316,9 @@ class ToolLinkRebate(PluginBase):
             if response.status_code == 200:
                 try:
                     result = response.json()
-                    logger.debug(f"线报API响应: {result}")
+                    # logger.debug(f"线报API响应: {result}")
                     if result.get("status") == 200:
                         data = result.get("msg", [])
-                        logger.debug(f"获取到线报数据 {len(data)} 条")
                         return data
                     else:
                         logger.error(f"获取线报失败: {result.get('status')}, 消息: {result.get('content', '')}")
@@ -311,12 +338,11 @@ class ToolLinkRebate(PluginBase):
     def save_xianbao_to_database(self, data_list):
         """保存线报数据到数据库，返回新数据列表"""
         if not data_list:
-            logger.debug("没有线报数据需要保存")
             return []
         
         try:
             db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "xianbao.db")
-            logger.debug(f"保存线报数据到数据库: {db_path}, 数据条数: {len(data_list)}")
+            # logger.debug(f"保存线报数据到数据库: {db_path}, 数据条数: {len(data_list)}")
             
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
@@ -327,7 +353,7 @@ class ToolLinkRebate(PluginBase):
                 
                 # 如果pic为空，则跳过该记录
                 if not pic:
-                    logger.debug(f"跳过无图片的线报: {item.get('content', '')[:30]}...")
+                    # logger.debug(f"跳过无图片的线报: {item.get('content', '')[:30]}...")
                     continue
                     
                 # 检查记录是否已存在（仅使用pic进行去重）
@@ -338,8 +364,9 @@ class ToolLinkRebate(PluginBase):
                         cursor.execute('''
                         INSERT INTO xianbao (
                             code, add_time, type, id, content, plat, pic, num_id, 
-                            plat2, type2, cid1, cid1_name, cid2, cid2_name, cid3, cid3_name, chunwenzi
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            plat2, type2, cid1, cid1_name, cid2, cid2_name, cid3, cid3_name, chunwenzi,
+                            created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ''', (
                             item.get('code', ''),
                             item.get('add_time', ''),
@@ -357,36 +384,41 @@ class ToolLinkRebate(PluginBase):
                             item.get('cid2_name', ''),
                             item.get('cid3', ''),
                             item.get('cid3_name', ''),
-                            item.get('chunwenzi', '')
+                            item.get('chunwenzi', ''),
+                            datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                         ))
-                        logger.debug(f"保存新线报: {item.get('content', '')[:30]}...")
                         new_data_items.append(item)
                     except sqlite3.IntegrityError as e:
                         # 如果出现主键冲突，跳过此条记录
                         logger.warning(f"数据库插入冲突: {str(e)}, 线报内容: {item.get('content', '')[:30]}...")
                 else:
-                    logger.debug(f"线报已存在，跳过: {item.get('content', '')[:30]}...")
+                    # logger.debug(f"线报已存在，跳过: {item.get('content', '')[:30]}...")
+                    pass
             
             conn.commit()
             conn.close()
-            logger.debug(f"线报保存完成，新增 {len(new_data_items)} 条")
             return new_data_items
         except Exception as e:
             logger.error(f"保存线报数据时发生错误: {str(e)}")
             logger.error(traceback.format_exc())
             return []
 
-    def format_xianbao_content(self, content):
+    def format_xianbao_content(self, content, keyword=""):
         """
         格式化线报内容：
         1. 将<br />替换为\n
         2. 去除图片内容
+        3. 去除[emoji=XXX]格式的内容
         """
         # 替换<br />为换行符
         formatted_content = content.replace("<br />", "\n")
         
-        # 构建消息
-        message = f"【新线报】\n\n{formatted_content}"
+        # 去除[emoji=XXX]格式的内容
+        formatted_content = re.sub(r'\[emoji=[A-Za-z0-9]+\]', '', formatted_content)
+        
+        # 构建消息，使用匹配的关键词作为标题
+        title = f"【{keyword}】" if keyword else "【新线报】"
+        message = f"{title}\n\n{formatted_content}"
         
         return message
 
@@ -408,7 +440,7 @@ class ToolLinkRebate(PluginBase):
                 
         return False, ""
 
-    @schedule(trigger="interval", seconds=5)
+    @schedule(trigger="interval", seconds=20)
     async def xianbao_monitor_task(self, bot):
         """线报监听定时任务"""
         # 计算自上次执行以来经过的时间
@@ -417,24 +449,18 @@ class ToolLinkRebate(PluginBase):
         
         # 如果未达到配置的间隔时间，则跳过执行
         if time_elapsed < self.xianbao_interval:
-            logger.debug(f"线报监听任务触发，但未达到配置的间隔时间 ({time_elapsed:.1f}/{self.xianbao_interval}秒)，跳过执行")
             return
             
         # 更新上次执行时间
         self.last_execution_time = now
-        
-        logger.info(f"线报监听任务执行，间隔: {self.xianbao_interval}秒")
         
         # 如果线报监听功能未启用，直接返回
         if not self.xianbao_enable:
             logger.warning("线报监听功能未启用，不执行监听任务")
             return
             
-        logger.success("开始执行线报监听任务")
-        
-        # 获取当前时间
-        current_time = now.strftime("%Y-%m-%d %H:%M:%S")
-        logger.info(f"[{current_time}] 开始获取线报数据...")
+        # 清理7天前的数据
+        self._clean_old_xianbao_data()
         
         # 确保接收者列表不为空
         if not self.xianbao_receivers:
@@ -443,7 +469,6 @@ class ToolLinkRebate(PluginBase):
             
         # 遍历所有关键词获取线报
         for keyword in self.xianbao_keywords:
-            logger.info(f"获取关键词 '{keyword}' 的线报数据")
             
             # 调用API获取线报数据
             xianbao_data = self.get_xianbao_data(keyword)
@@ -453,7 +478,7 @@ class ToolLinkRebate(PluginBase):
             
             # 处理新线报数据
             if new_data_items:
-                logger.success(f"[{current_time}] 发现 {len(new_data_items)} 条新线报数据")
+                logger.success(f"关键词 '{keyword}' 发现 {len(new_data_items)} 条新线报数据")
                 
                 # 对每条新线报进行转链并发送给接收者
                 for item in new_data_items:
@@ -465,23 +490,18 @@ class ToolLinkRebate(PluginBase):
                             logger.info(f"线报包含过滤关键词 '{filter_keyword}'，跳过: {content}")
                             continue
                             
-                        logger.info(f"处理线报内容: {content}")
                         # 转链处理
                         success, converted_content, error_msg = self.convert_links(content)
                         
                         # 只有转链成功时才发送消息
                         if success:
-                            # 构建完整的线报消息，使用格式化函数
-                            message = self.format_xianbao_content(converted_content)
-                            
-                            logger.info(f"准备发送线报: {message}")
+                            # 构建完整的线报消息，使用格式化函数，并传递匹配的关键词
+                            message = self.format_xianbao_content(converted_content, keyword)
                             
                             # 发送给所有接收者
                             for receiver in self.xianbao_receivers:
                                 try:
-                                    logger.debug(f"发送线报到 {receiver}")
                                     await bot.send_text_message(receiver, message)
-                                    logger.success(f"成功发送线报到 {receiver}")
                                 except Exception as e:
                                     logger.error(f"发送线报到 {receiver} 失败: {str(e)}")
                                     logger.error(traceback.format_exc())
@@ -489,7 +509,5 @@ class ToolLinkRebate(PluginBase):
                                 await asyncio.sleep(1)
                         else:
                             logger.warning(f"线报转链失败，不发送消息: {error_msg}")
-            else:
-                logger.info(f"[{current_time}] 没有新数据")
+
                 
-        logger.info("线报监听任务执行完毕")
