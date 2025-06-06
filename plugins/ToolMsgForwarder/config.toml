@@ -13,15 +13,24 @@ union_id = "2036757202"  # 京东联盟ID
 pid = "mm_375930105_2518750017_111777500003"  # 淘宝联盟pid，格式为mm_xxx_xxx_xxx
 
 # ==================== 统一规则配置 ====================
-# 一个规则可以同时处理多种类型的消息
+[[ToolMsgForwarder.rules]]
+enabled = true
+name = "ces"
+from_wxid = "43353238030@chatroom"          # 小橘相纸
+# 不设置listen_specific_senders_in_group则监听群内所有人
+to_wxids = ["43353238030@chatroom"]          # 小橘相纸
+prepend_info = true
+msg_types = ["text", "image", "xml"]
+enable_rebate = true                       # 启用转链功能（对文本消息生效）
+
 [[ToolMsgForwarder.rules]]
 enabled = true
 name = "小梨相纸"
-from_wxid = "9278245163@chatroom"          # 小梨相纸
+from_wxid = "56424204357@chatroom"          # 小梨相纸
 # 不设置listen_specific_senders_in_group则监听群内所有人
-to_wxids = ["48829307931@chatroom"]          # 转发目标群
-prepend_info = true
-msg_types = ["text", "image"]              # 同时处理文本和图片消息
+to_wxids = ["43353238030@chatroom"]          # 小橘相纸
+prepend_info = false
+msg_types = ["text", "image", "xml"]
 enable_rebate = true                       # 启用转链功能（对文本消息生效）
 
 # 多功能转发-指定发送者
