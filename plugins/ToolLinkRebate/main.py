@@ -62,10 +62,12 @@ class ToolLinkRebate(PluginBase):
             xianbao_config = config.get("xianbao", {})
             self.xianbao_enable = xianbao_config.get("enable", False)  # 是否启用线报监听
             self.xianbao_interval = xianbao_config.get("interval", 300)  # 线报监听间隔（秒）
-            self.xianbao_keywords = xianbao_config.get("keywords", ["得物"])  # 线报关键词
+            self.xianbao_keywords = xianbao_config.get("keywords", [])  # 线报关键词
             self.xianbao_receivers = xianbao_config.get("receivers", [])  # 线报接收者列表
             # 线报过滤关键词，包含这些关键词的线报将被跳过
             self.xianbao_filter_keywords = xianbao_config.get("filter_keywords", [])
+            # 是否显示线报标题
+            self.show_title = xianbao_config.get("show_title", False)
 
             # 记录上次执行时间
             self.last_execution_time = datetime.datetime.now()
@@ -89,6 +91,7 @@ class ToolLinkRebate(PluginBase):
                 logger.success(f"线报关键词: {self.xianbao_keywords}")
                 logger.success(f"线报接收者: {self.xianbao_receivers}")
                 logger.success(f"线报过滤关键词: {self.xianbao_filter_keywords}")
+                logger.success(f"是否显示线报标题: {self.show_title}")
                 
                 # 初始化线报数据库
                 self._init_xianbao_database()
@@ -237,7 +240,6 @@ class ToolLinkRebate(PluginBase):
             await bot.send_text_message(from_user, f"【转链失败】{error_msg}\n\n{content}")
             return False
 
-        return True
 
     def convert_links(self, text: str) -> Tuple[bool, str, str]:
         """
@@ -416,9 +418,14 @@ class ToolLinkRebate(PluginBase):
         # 去除[emoji=XXX]格式的内容
         formatted_content = re.sub(r'\[emoji=[A-Za-z0-9]+\]', '', formatted_content)
         
-        # 构建消息，使用匹配的关键词作为标题
-        title = f"【{keyword}】" if keyword else "【新线报】"
-        message = f"{title}\n\n{formatted_content}"
+        # 根据配置决定是否显示标题
+        if self.show_title:
+            # 构建消息，使用匹配的关键词作为标题
+            title = f"【{keyword}】" if keyword else "【新线报】"
+            message = f"{title}\n\n{formatted_content}"
+        else:
+            # 不显示标题，直接返回格式化后的内容
+            message = formatted_content
         
         return message
 
