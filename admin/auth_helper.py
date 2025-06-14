@@ -66,7 +66,7 @@ async def check_auth(request: Request):
                 return None
 
             # 会话有效
-            logger.debug(f"会话有效，用户: {session_data.get('username')}")
+            # logger.debug(f"会话有效，用户: {session_data.get('username')}")
             return session_data.get("username")
         except Exception as e:
             logger.error(f"解析会话数据失败: {str(e)}")
