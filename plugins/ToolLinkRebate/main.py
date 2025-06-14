@@ -357,10 +357,14 @@ class ToolLinkRebate(PluginBase):
                 if not pic:
                     # logger.debug(f"跳过无图片的线报: {item.get('content', '')[:30]}...")
                     continue
-                    
+                
+                current_content = item.get('content', '')
+                
                 # 检查记录是否已存在（仅使用pic进行去重）
-                cursor.execute("SELECT 1 FROM xianbao WHERE pic = ?", (pic,))
-                if not cursor.fetchone():
+                cursor.execute("SELECT content FROM xianbao WHERE pic = ?", (pic,))
+                existing_record = cursor.fetchone()
+                
+                if not existing_record:
                     try:
                         # 插入新记录
                         cursor.execute('''
@@ -374,7 +378,7 @@ class ToolLinkRebate(PluginBase):
                             item.get('add_time', ''),
                             item.get('type', ''),
                             item.get('id', ''),
-                            item.get('content', ''),
+                            current_content,
                             item.get('plat', ''),
                             pic,
                             item.get('num_id', ''),
@@ -392,10 +396,22 @@ class ToolLinkRebate(PluginBase):
                         new_data_items.append(item)
                     except sqlite3.IntegrityError as e:
                         # 如果出现主键冲突，跳过此条记录
-                        logger.warning(f"数据库插入冲突: {str(e)}, 线报内容: {item.get('content', '')[:30]}...")
+                        logger.warning(f"数据库插入冲突: {str(e)}, 线报内容: {current_content[:30]}...")
                 else:
-                    # logger.debug(f"线报已存在，跳过: {item.get('content', '')[:30]}...")
-                    pass
+                    # 已存在记录，比较内容长度
+                    existing_content = existing_record[0]
+                    if len(current_content) > len(existing_content):
+                        # 当前内容更长，更新记录
+                        logger.info(f"发现更长内容的线报，更新数据库: {len(current_content)} > {len(existing_content)}")
+                        cursor.execute('''
+                        UPDATE xianbao SET 
+                            content = ?
+                        WHERE pic = ?
+                        ''', (current_content, pic))
+                        new_data_items.append(item)
+                    else:
+                        # logger.debug(f"线报已存在且内容不比现有内容长，跳过: {current_content[:30]}...")
+                        pass
             
             conn.commit()
             conn.close()

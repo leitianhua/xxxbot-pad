@@ -139,7 +139,7 @@ def main():
     print(f"[{current_time}] 开始获取线报数据...")
     
     # 调用API获取线报数据
-    xianbao_data = convert_taobao_link("得物")
+    xianbao_data = convert_taobao_link("NB580 消费券后197 得物309")
     
     # 保存到数据库并获取新数据列表
     new_data_items = save_to_database(xianbao_data)
