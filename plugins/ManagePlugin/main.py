@@ -53,7 +53,7 @@ class ManagePlugin(PluginBase):
             return True  # 不是管理命令，继续执行后续处理
 
         if message["SenderWxid"] not in self.admins:
-            await bot.send_text_message(message["FromWxid"], "你没有权限使用此命令")
+            # await bot.send_text_message(message["FromWxid"], "你没有权限使用此命令")
             return False  # 阻止后续处理
 
         # 获取命令类型
@@ -65,7 +65,7 @@ class ManagePlugin(PluginBase):
             if plugin_name in plugin_manager.plugins.keys():
                 # 如果插件已加载，则自动重载插件
                 if plugin_name == "ManagePlugin":
-                    await bot.send_text_message(message["FromWxid"], "⚠️你不能重载 ManagePlugin 插件！")
+                    # await bot.send_text_message(message["FromWxid"], "⚠️你不能重载 ManagePlugin 插件！")
                     return False  # 阻止后续处理
                 
                 attempt = await plugin_manager.reload_plugin(bot, plugin_name)
@@ -114,7 +114,7 @@ class ManagePlugin(PluginBase):
 
         elif cmd_type == "reload_plugin":
             if plugin_name == "ManagePlugin":
-                await bot.send_text_message(message["FromWxid"], "⚠️你不能重载 ManagePlugin 插件！")
+                # await bot.send_text_message(message["FromWxid"], "⚠️你不能重载 ManagePlugin 插件！")
                 return False  # 阻止后续处理
             elif plugin_name not in plugin_manager.plugins.keys():
                 await bot.send_text_message(message["FromWxid"], "⚠️插件不存在或未加载")

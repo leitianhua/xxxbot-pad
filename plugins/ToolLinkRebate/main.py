@@ -76,8 +76,8 @@ class ToolLinkRebate(PluginBase):
             self.link_patterns = {
                 "taobao": re.compile(r"https?://(s\.click\.taobao\.com|m\.tb\.cn)/[^\s<]*"),  # 淘宝链接
                 "jd": re.compile(r"https?://u\.jd\.com/[A-Za-z0-9]+"),  # 京东链接
-                "tkl1": re.compile(r"([¥￥$].*?[¥￥$])"),  # 淘口令模式1
-                "tkl2": re.compile(r"([¥￥$].*?[/\\])"),  # 淘口令模式2
+                "tkl1": re.compile(r"[¥￥$/].*?[¥￥$/]"),  # 淘口令模式1
+                # "tkl2": re.compile(r"([¥￥$].*?[/\\])"),  # 淘口令模式2
                 "tkl3": re.compile(r"(\(\(.*?://)"),  # 淘口令模式3
                 "tkl4": re.compile(r"\(([a-zA-Z0-9]{10,})\)")  # 淘口令模式4
             }
