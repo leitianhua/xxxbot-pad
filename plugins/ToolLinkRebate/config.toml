@@ -24,9 +24,10 @@ group_list = [
 [xianbao]
 enable = true                             # 是否启用线报监听功能
 interval = 30                             # 线报监听间隔（秒）
-keywords = ["得物", "薅羊毛"]        # 线报关键词列表
+keywords = ["得物", "锝物", "鍀物"]        # 线报关键词列表
 receivers = [
-    "48829307931@chatroom",        # 得物禁言群
-]        
+#    "48829307931@chatroom",        # 得物禁言群
+    "52620932598@chatroom",        # 得物测试群
+]
 filter_keywords = ["楼上"]
 show_title = false                         # 是否显示线报标题，设为false则不显示标题

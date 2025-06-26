@@ -1,19 +1,17 @@
 import os
 import re
 import json
-import aiohttp
 import tomllib
 import urllib.parse
+
+import httpx
 import requests
-import asyncio
 import sqlite3
 import datetime
 import traceback
 from typing import List, Dict, Any, Tuple, Optional
 from loguru import logger
-
-from WechatAPI import WechatAPIClient
-from utils.decorators import on_text_message, schedule
+from pathlib import Path
 from utils.plugin_base import PluginBase
 import urllib3
 
@@ -33,7 +31,7 @@ def set_bot_instance(bot):
 
 class ToolLinkRebate(PluginBase):
     """商品转链返利插件"""
-    description = "商品转链，线报推送（淘宝、京东）"
+    description = "商品转链返利插件 - 自动识别淘宝、京东链接并生成带返利的推广链接"
     author = "lei"
     version = "1.3.0"
 
@@ -47,6 +45,10 @@ class ToolLinkRebate(PluginBase):
             with open(config_path, "rb") as f:
                 config = tomllib.load(f)
             logger.debug(f"配置文件加载成功: {config}")
+            # 初始化临时目录
+            self.plugin_dir = Path(os.path.dirname(os.path.abspath(__file__)))
+            self.temp_dir = self.plugin_dir / "temp"
+            self._ensure_temp_dir()
 
             # 读取基本配置
             basic_config = config.get("basic", {})
@@ -102,6 +104,13 @@ class ToolLinkRebate(PluginBase):
             logger.error(traceback.format_exc())
             self.enable = False
             self.xianbao_enable = False
+
+    def _ensure_temp_dir(self):
+        """确保临时目录存在"""
+        try:
+            self.temp_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            logger.error(f"[ToolParser] 创建临时目录失败: {e}")
 
     def _init_xianbao_database(self):
         """初始化线报数据库"""
@@ -181,68 +190,10 @@ class ToolLinkRebate(PluginBase):
             logger.error(f"清理线报数据时发生错误: {str(e)}")
             logger.error(traceback.format_exc())
 
-    @on_text_message(priority=90)
-    async def handle_text(self, bot: WechatAPIClient, message: dict):
-        """处理文本消息，检测并转换链接"""
-        if not self.enable:
-            logger.debug("转链插件未启用")
-            return True
-
-        content = message.get("Content", "")
-        from_user = message.get("FromWxid", "")
-
-        logger.debug(f"转链插件收到文本消息: {content}")
-
-        # 检查消息来源是否在允许的范围内
-        if not await self._check_allowed_source(from_user):
-            return True
-
-        # 处理文本中的链接
-        return await self._process_links_in_text(bot, from_user, content)
-
-    async def _check_allowed_source(self, from_user: str) -> bool:
-        """检查消息来源是否在允许的范围内"""
-        is_group_message = from_user.endswith("@chatroom")
-
-        if self.group_mode == "all":
-            return True
-        elif self.group_mode == "whitelist":
-            return from_user in self.group_list
-        elif self.group_mode == "blacklist":
-            return from_user not in self.group_list
-        else:
-            logger.warning(f"未知的群组控制模式: {self.group_mode}，默认允许所有来源")
-            return True
-
-    async def _process_links_in_text(self, bot: WechatAPIClient, from_user: str, content: str) -> bool:
-        """处理文本中的链接"""
-        # 查找所有匹配的链接
-        found_links = {}
-        for link_type, pattern in self.link_patterns.items():
-            matches = pattern.findall(content)
-            if matches:
-                found_links[link_type] = matches
-
-        if not found_links:
-            return True
-
-        # 使用折淘客API进行批量转链
-        success, converted_content, error_msg = self.convert_links(content)
-
-        # 根据转链结果决定是否发送消息
-        if success:
-            # 转链成功，发送转换后的内容
-            await bot.send_text_message(from_user, converted_content)
-            return False
-        else:
-            # 转链失败，发送错误消息
-            await bot.send_text_message(from_user, f"【转链失败】{error_msg}\n\n{content}")
-            return False
-
     def convert_links(self, text: str) -> Tuple[bool, str, str]:
         """
         调用折淘客API进行批量转链
-        
+
         返回值:
         - Tuple[bool, str, str]: (是否成功, 转链内容/原内容, 错误消息)
           - 成功时: (True, 转链内容, "")
@@ -257,7 +208,7 @@ class ToolLinkRebate(PluginBase):
                 "sid": self.sid,  # 添加sid参数
                 "unionId": self.union_id,  # 京东联盟ID
                 "pid": self.pid,  # 淘宝联盟pid，格式为mm_xxx_xxx_xxx
-                "tkl": urllib.parse.quote(text),  # 需要转换的文本，进行URL编码
+                "tkl": text,  # 需要转换的文本，进行URL编码
             }
 
             # 发送请求
@@ -271,12 +222,16 @@ class ToolLinkRebate(PluginBase):
                         converted_content = result.get("content", "")
                         # 检查转换后的内容是否与原内容不同
                         if converted_content and converted_content != text:
+                            logger.success(f"""转链成功:
+                                           消息原始内容: {text}
+                                           消息转后内容: {converted_content}
+                                            """)
                             return True, converted_content, ""
                         else:
                             return False, text, "转链后内容无变化"
                     else:
                         error_msg = result.get('content', '未知错误')
-                        logger.error(f"转链失败: {result.get('status')}, 消息: {error_msg}")
+                        logger.error(f"转链失败: {result.get('status')}, 消息: {error_msg}, 消息原始内容: {text}")
                         if result.get("status") == 301:
                             return False, text, "无法识别链接"
                         else:
@@ -430,7 +385,7 @@ class ToolLinkRebate(PluginBase):
     def should_filter_xianbao(self, content):
         """
         检查线报内容是否包含过滤关键词
-        
+
         返回值:
         - Tuple[bool, str]: (是否应该过滤, 匹配的关键词)
           - 应该过滤: (True, 匹配的关键词)
@@ -444,86 +399,6 @@ class ToolLinkRebate(PluginBase):
                 return True, keyword
 
         return False, ""
-
-    @schedule(trigger="interval", seconds=20)
-    async def xianbao_monitor_task(self, bot):
-        """线报监听定时任务"""
-        # 计算自上次执行以来经过的时间
-        now = datetime.datetime.now()
-        time_elapsed = (now - self.last_execution_time).total_seconds()
-
-        # 如果未达到配置的间隔时间，则跳过执行
-        if time_elapsed < self.xianbao_interval:
-            return
-
-        # 更新上次执行时间
-        self.last_execution_time = now
-
-        # 如果线报监听功能未启用，直接返回
-        if not self.xianbao_enable:
-            logger.warning("线报监听功能未启用，不执行监听任务")
-            return
-
-        # 清理7天前的数据
-        self._clean_old_xianbao_data()
-
-        # 确保接收者列表不为空
-        if not self.xianbao_receivers:
-            logger.error("线报接收者列表为空，无法发送线报，请检查配置")
-            return
-
-        # 遍历所有关键词获取线报
-        for keyword in self.xianbao_keywords:
-
-            # 调用API获取线报数据
-            xianbao_data = self.get_xianbao_data(keyword)
-
-            # 保存到数据库并获取新数据列表
-            new_data_items = self.save_xianbao_to_database(xianbao_data)
-
-            # 处理新线报数据
-            if new_data_items:
-                logger.success(f"关键词 '{keyword}' 发现 {len(new_data_items)} 条新线报数据")
-
-                # 对每条新线报进行转链并发送给接收者
-                for item in new_data_items:
-                    content = item.get('content', '')
-                    if content:
-                        # 检查是否包含过滤关键词
-                        should_filter, filter_keyword = self.should_filter_xianbao(content)
-                        if should_filter:
-                            logger.info(f"线报包含过滤关键词 '{filter_keyword}'，跳过: {content}")
-                            continue
-
-                        # 转链处理
-                        success, converted_content, error_msg = self.convert_links(content)
-
-                        # 只有转链成功时才发送消息
-                        if success:
-                            # 构建完整的线报消息，使用格式化函数，并传递匹配的关键词
-                            message = self.format_xianbao_content(converted_content, keyword)
-
-                            # 提取图片url
-                            urls = re.findall(r'\[url=(.*?)\]', content)
-
-                            # 发送给所有接收者
-                            for receiver in self.xianbao_receivers:
-                                try:
-                                    # 发送文本
-                                    await bot.send_text_message(receiver, message)
-
-                                    # 发送图片
-                                    for url in urls:
-                                        logger.debug(f"发送图片:{url}")
-                                        await bot.send_image_message(receiver, self._download_http_image(url))
-
-                                except Exception as e:
-                                    logger.error(f"发送线报到 {receiver} 失败: {str(e)}")
-                                    logger.error(traceback.format_exc())
-                                # 避免发送过快
-                                await asyncio.sleep(1)
-                        else:
-                            logger.warning(f"线报转链失败，不发送消息: {error_msg}")
 
     def _download_http_image(self, http_url) -> Optional[bytes]:
         """下载图片,返回图片二进制数据"""
@@ -549,3 +424,48 @@ class ToolLinkRebate(PluginBase):
         except Exception as e:
             logger.error(f"下载图片失败: {e}")
             return None
+
+
+if __name__ == '__main__':
+
+    self = ToolLinkRebate()
+
+    # xianbao_keywords = ["锝物", "得物", "鍀物"]
+    xianbao_keywords = ["滔搏阿迪SPEZIAL板鞋"]
+    for keyword in xianbao_keywords:
+
+        # 调用API获取线报数据
+        xianbao_data = self.get_xianbao_data(keyword)
+
+        # 保存到数据库并获取新数据列表
+        # new_data_items = self.save_xianbao_to_database(xianbao_data)
+        new_data_items = xianbao_data
+
+        # 处理新线报数据
+        if new_data_items:
+            logger.success(f"关键词 '{keyword}' 发现 {len(new_data_items)} 条新线报数据")
+
+            # 对每条新线报进行转链并发送给接收者
+            for item in new_data_items:
+                content = item.get('content', '')
+                if content:
+                    # 检查是否包含过滤关键词
+                    should_filter, filter_keyword = self.should_filter_xianbao(content)
+                    if should_filter:
+                        logger.info(f"线报包含过滤关键词 '{filter_keyword}'，跳过: {content}")
+                        continue
+
+                    # 转链处理
+                    success, converted_content, error_msg = self.convert_links(content)
+
+                    # 只有转链成功时才发送消息
+                    if success:
+                        # 构建完整的线报消息，使用格式化函数，并传递匹配的关键词
+                        message_text = self.format_xianbao_content(converted_content, keyword)
+
+                        # 图片处理
+                        urls = re.findall(r'\[url=(.*?)\]', content)
+                        # 打印提取的 URL
+                        for url in urls:
+                            logger.info(f"图片地址:{url}")
+                            self._download_http_image(url)
