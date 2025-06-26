@@ -11,7 +11,7 @@ import datetime
 import traceback
 from typing import List, Dict, Any, Tuple, Optional
 from loguru import logger
-
+from pathlib import Path
 from WechatAPI import WechatAPIClient
 from utils.decorators import on_text_message, schedule
 from utils.plugin_base import PluginBase
@@ -47,6 +47,10 @@ class ToolLinkRebate(PluginBase):
             with open(config_path, "rb") as f:
                 config = tomllib.load(f)
             logger.debug(f"配置文件加载成功: {config}")
+            # 初始化临时目录
+            self.plugin_dir = Path(os.path.dirname(os.path.abspath(__file__)))
+            self.temp_dir = self.plugin_dir / "temp"
+            self._ensure_temp_dir()
 
             # 读取基本配置
             basic_config = config.get("basic", {})
@@ -102,6 +106,13 @@ class ToolLinkRebate(PluginBase):
             logger.error(traceback.format_exc())
             self.enable = False
             self.xianbao_enable = False
+
+    def _ensure_temp_dir(self):
+        """确保临时目录存在"""
+        try:
+            self.temp_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            logger.error(f"[ToolParser] 创建临时目录失败: {e}")
 
     def _init_xianbao_database(self):
         """初始化线报数据库"""
@@ -466,6 +477,8 @@ class ToolLinkRebate(PluginBase):
 
         # 清理7天前的数据
         self._clean_old_xianbao_data()
+        # 清理缓存图片
+        self._clear_temp_cache()
 
         # 确保接收者列表不为空
         if not self.xianbao_receivers:
@@ -514,8 +527,9 @@ class ToolLinkRebate(PluginBase):
 
                                     # 发送图片
                                     for url in urls:
-                                        logger.debug(f"发送图片:{url}")
-                                        await bot.send_image_message(receiver, self._download_http_image(url))
+                                        image_byte = self._download_http_image(url)
+                                        if image_byte:
+                                            await bot.send_image_message(receiver, image_byte)
 
                                 except Exception as e:
                                     logger.error(f"发送线报到 {receiver} 失败: {str(e)}")
@@ -531,7 +545,7 @@ class ToolLinkRebate(PluginBase):
             # 解析图片文件名
             import hashlib
             import base64
-            local_path = self.temp_dir / f"{base64.b32encode(hashlib.sha256(http_url.encode("utf-8")).digest()).decode("ascii").rstrip("=")}.jpg"
+            local_path = self.temp_dir / f"""{base64.b32encode(hashlib.sha256(http_url.encode('utf-8')).digest()).decode('ascii').rstrip('=')}.jpg"""
 
             # 检查本地缓存
             if local_path.exists():
@@ -549,3 +563,14 @@ class ToolLinkRebate(PluginBase):
         except Exception as e:
             logger.error(f"下载图片失败: {e}")
             return None
+
+    def _clear_temp_cache(self):
+        """删除temp目录下的所有缓存文件"""
+        try:
+            if self.temp_dir.exists():
+                import shutil
+                shutil.rmtree(self.temp_dir)
+                self.temp_dir.mkdir(parents=True, exist_ok=True)
+                logger.info(f"已清空缓存目录: {self.temp_dir}")
+        except Exception as e:
+            logger.error(f"清空缓存目录失败: {e}")

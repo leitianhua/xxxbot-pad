@@ -400,13 +400,24 @@ class ToolLinkRebate(PluginBase):
 
         return False, ""
 
+    def _clear_temp_cache(self):
+        """删除temp目录下的所有缓存文件"""
+        try:
+            if self.temp_dir.exists():
+                import shutil
+                shutil.rmtree(self.temp_dir)
+                self.temp_dir.mkdir(parents=True, exist_ok=True)
+                logger.info(f"已清空缓存目录: {self.temp_dir}")
+        except Exception as e:
+            logger.error(f"清空缓存目录失败: {e}")
+
     def _download_http_image(self, http_url) -> Optional[bytes]:
         """下载图片,返回图片二进制数据"""
         try:
             # 解析图片文件名
             import hashlib
             import base64
-            local_path = self.temp_dir / f"{base64.b32encode(hashlib.sha256(http_url.encode("utf-8")).digest()).decode("ascii").rstrip("=")}.jpg"
+            local_path = self.temp_dir / f"""{base64.b32encode(hashlib.sha256(http_url.encode('utf-8')).digest()).decode('ascii').rstrip('=')}.jpg"""
 
             # 检查本地缓存
             if local_path.exists():
@@ -430,8 +441,9 @@ if __name__ == '__main__':
 
     self = ToolLinkRebate()
 
+    self._clear_temp_cache()
     # xianbao_keywords = ["锝物", "得物", "鍀物"]
-    xianbao_keywords = ["滔搏阿迪SPEZIAL板鞋"]
+    xianbao_keywords = ["耐克GATO BG运动休闲鞋"]
     for keyword in xianbao_keywords:
 
         # 调用API获取线报数据
