@@ -61,6 +61,7 @@ class ToolLinkRebate(PluginBase):
             self.pid = basic_config.get("pid", "")  # 淘宝联盟pid
             self.group_mode = basic_config.get("group_mode", "all")  # 群组控制模式
             self.group_list = basic_config.get("group_list", [])  # 群组/用户列表
+            self.send_message_on_success = basic_config.get("send_message_on_success", True)  # 基础转链成功后是否发送消息
 
             # 线报监听配置
             xianbao_config = config.get("xianbao", {})
@@ -72,6 +73,10 @@ class ToolLinkRebate(PluginBase):
             self.xianbao_filter_keywords = xianbao_config.get("filter_keywords", [])
             # 是否显示线报标题
             self.show_title = xianbao_config.get("show_title", False)
+            # 线报数据保留天数
+            self.data_retention_days = xianbao_config.get("data_retention_days", 7)
+            # 线报转链成功后是否发送消息
+            self.xianbao_send_message_on_success = xianbao_config.get("send_message_on_success", True)
 
             # 记录上次执行时间
             self.last_execution_time = datetime.datetime.now()
@@ -89,6 +94,7 @@ class ToolLinkRebate(PluginBase):
             logger.success(f"商品转链返利插件配置加载成功")
             logger.info(f"群组控制模式: {self.group_mode}")
             logger.info(f"群组/用户列表: {self.group_list}")
+            logger.info(f"基础转链成功后是否发送消息: {self.send_message_on_success}")
 
             if self.xianbao_enable:
                 logger.success(f"线报监听已启用，监听间隔: {self.xianbao_interval}秒")
@@ -96,7 +102,9 @@ class ToolLinkRebate(PluginBase):
                 logger.success(f"线报接收者: {self.xianbao_receivers}")
                 logger.success(f"线报过滤关键词: {self.xianbao_filter_keywords}")
                 logger.success(f"是否显示线报标题: {self.show_title}")
-
+                logger.success(f"线报数据保留天数: {self.data_retention_days}")
+                logger.success(f"线报转链成功后是否发送消息: {self.xianbao_send_message_on_success}")
+                
                 # 初始化线报数据库
                 self._init_xianbao_database()
             else:
@@ -146,7 +154,7 @@ class ToolLinkRebate(PluginBase):
             )
             ''')
 
-            # 尝试清理7天前的数据
+            # 尝试清理过期的数据
             self._clean_old_xianbao_data(conn)
 
             conn.commit()
@@ -157,7 +165,7 @@ class ToolLinkRebate(PluginBase):
             logger.error(traceback.format_exc())
 
     def _clean_old_xianbao_data(self, conn=None):
-        """清理7天前的线报数据"""
+        """清理过期的线报数据"""
         try:
             # 如果没有传入连接，则创建新连接
             close_conn = False
@@ -168,21 +176,21 @@ class ToolLinkRebate(PluginBase):
 
             cursor = conn.cursor()
 
-            # 获取7天前的日期
-            seven_days_ago = (datetime.datetime.now() - datetime.timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+            # 获取配置的天数前的日期
+            days_ago = (datetime.datetime.now() - datetime.timedelta(days=self.data_retention_days)).strftime('%Y-%m-%d %H:%M:%S')
 
             # 查询要删除的记录数量
-            cursor.execute("SELECT COUNT(*) FROM xianbao WHERE created_at < ?", (seven_days_ago,))
+            cursor.execute("SELECT COUNT(*) FROM xianbao WHERE created_at < ?", (days_ago,))
             count = cursor.fetchone()[0]
 
-            # 删除7天前的数据
-            cursor.execute("DELETE FROM xianbao WHERE created_at < ?", (seven_days_ago,))
+            # 删除过期的数据
+            cursor.execute("DELETE FROM xianbao WHERE created_at < ?", (days_ago,))
 
             # 提交事务
             conn.commit()
 
             if count > 0:
-                logger.info(f"已清理 {count} 条7天前的线报数据")
+                logger.info(f"已清理 {count} 条{self.data_retention_days}天前的线报数据")
 
             # 如果是新创建的连接，则关闭
             if close_conn:
@@ -242,8 +250,9 @@ class ToolLinkRebate(PluginBase):
 
         # 根据转链结果决定是否发送消息
         if success:
-            # 转链成功，发送转换后的内容
-            await bot.send_text_message(from_user, converted_content)
+            # 转链成功，检查是否需要发送转换后的内容
+            if self.send_message_on_success:
+                await bot.send_text_message(from_user, converted_content)
             return False
         else:
             # 转链失败，发送错误消息
@@ -475,7 +484,7 @@ class ToolLinkRebate(PluginBase):
             logger.warning("线报监听功能未启用，不执行监听任务")
             return
 
-        # 清理7天前的数据
+        # 清理过期的数据
         self._clean_old_xianbao_data()
         # 清理缓存图片
         self._clear_temp_cache()
@@ -512,7 +521,7 @@ class ToolLinkRebate(PluginBase):
                         success, converted_content, error_msg = self.convert_links(content)
 
                         # 只有转链成功时才发送消息
-                        if success:
+                        if success and self.xianbao_send_message_on_success:
                             # 构建完整的线报消息，使用格式化函数，并传递匹配的关键词
                             message = self.format_xianbao_content(converted_content, keyword)
 
@@ -537,7 +546,10 @@ class ToolLinkRebate(PluginBase):
                                 # 避免发送过快
                                 await asyncio.sleep(1)
                         else:
-                            logger.warning(f"线报转链失败，不发送消息: {error_msg}")
+                            if not success:
+                                logger.warning(f"线报转链失败，不发送消息: {error_msg}")
+                            elif not self.xianbao_send_message_on_success:
+                                logger.info("线报转链成功，但配置为不发送消息")
 
     def _download_http_image(self, http_url) -> Optional[bytes]:
         """下载图片,返回图片二进制数据"""

@@ -443,7 +443,7 @@ if __name__ == '__main__':
 
     self._clear_temp_cache()
     # xianbao_keywords = ["锝物", "得物", "鍀物"]
-    xianbao_keywords = ["耐克GATO BG运动休闲鞋"]
+    xianbao_keywords = ["骆驼雪壳防晒衣"]
     for keyword in xianbao_keywords:
 
         # 调用API获取线报数据

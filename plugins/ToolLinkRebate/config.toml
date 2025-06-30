@@ -6,6 +6,7 @@ appkey = "2a77607fa088417a8fcb257d1fbb3088"  # 折淘客的对接秘钥appkey
 sid = "185073"    # 折淘客的sid参数
 union_id = "2036757202"  # 京东联盟ID
 pid = "mm_375930105_2518750017_111777500003"  # 淘宝联盟pid
+send_message_on_success = true  # 基础转链成功后是否发送消息
 
 # 群组/用户 控制模式
 # 可选值:
@@ -31,3 +32,5 @@ receivers = [
 ]
 filter_keywords = ["楼上"]
 show_title = false                         # 是否显示线报标题，设为false则不显示标题
+data_retention_days = 2                   # 线报数据保留天数，超过这个天数的数据将被自动清理
+send_message_on_success = true            # 线报转链成功后是否发送消息
