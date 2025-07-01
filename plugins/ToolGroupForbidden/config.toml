@@ -1,0 +1,23 @@
+[basic]
+# 是否启用插件
+enable = true 
+
+# 通知接收人配置，如果为空则不发送通知
+# 格式: 接收通知的wxid，例如 "wxid_abc123"
+notify_receiver = "wxid_l4u1u9bgq5u022"
+
+# 白名单规则配置，使用数组形式
+[[whitelist_rules]]
+enabled = true
+name = "测试群"
+group_id = "52620932598@chatroom"
+whitelist = ["wxid_l4u1u9bgq5u022"]
+# 可以添加更多白名单成员
+# whitelist = ["wxid_l4u1u9bgq5u022", "wxid_6ghmm8mjlnw222"]
+
+# 可以添加更多群配置
+# [[whitelist_rules]]
+# enabled = true
+# name = "其他群"
+# group_id = "87654321@chatroom"
+# whitelist = ["wxid_abc123", "wxid_def456"]
