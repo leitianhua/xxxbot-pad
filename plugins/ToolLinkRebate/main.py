@@ -74,7 +74,7 @@ class ToolLinkRebate(PluginBase):
             # 是否显示线报标题
             self.show_title = xianbao_config.get("show_title", False)
             # 线报数据保留天数
-            self.data_retention_days = xianbao_config.get("data_retention_days", 7)
+            self.data_retention_days = xianbao_config.get("data_retention_days", 3)
             # 线报转链成功后是否发送消息
             self.xianbao_send_message_on_success = xianbao_config.get("send_message_on_success", True)
 
@@ -322,7 +322,7 @@ class ToolLinkRebate(PluginBase):
             "id": None,
             "type": None,
             "page": 1,
-            "page_size": 200,
+            "page_size": 100,
             "msg": 1,
             "interval": 1440,
             "q": keyword,

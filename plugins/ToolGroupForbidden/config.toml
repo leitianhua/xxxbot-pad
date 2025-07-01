@@ -6,18 +6,16 @@ enable = true
 # 格式: 接收通知的wxid，例如 "wxid_abc123"
 notify_receiver = "wxid_l4u1u9bgq5u022"
 
-# 白名单规则配置，使用数组形式
+# 白名单规则配置，使用数组形式 可以添加更多群配置
 [[whitelist_rules]]
-enabled = true
+enabled = false
 name = "测试群"
 group_id = "52620932598@chatroom"
 whitelist = ["wxid_l4u1u9bgq5u022"]
-# 可以添加更多白名单成员
-# whitelist = ["wxid_l4u1u9bgq5u022", "wxid_6ghmm8mjlnw222"]
 
-# 可以添加更多群配置
-# [[whitelist_rules]]
-# enabled = true
-# name = "其他群"
-# group_id = "87654321@chatroom"
-# whitelist = ["wxid_abc123", "wxid_def456"]
+# 得物3群
+[[whitelist_rules]]
+enabled = true
+name = "得物3群"
+group_id = "48829307931@chatroom"
+whitelist = ["wxid_l4u1u9bgq5u022"]
