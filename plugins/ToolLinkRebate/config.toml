@@ -31,6 +31,5 @@ receivers = [
     "52620932598@chatroom",        # 得物测试群
 ]
 filter_keywords = ["楼上"]
-show_title = false                         # 是否显示线报标题，设为false则不显示标题
-data_retention_days = 2                   # 线报数据保留天数，超过这个天数的数据将被自动清理
+data_retention_minutes = 180                   # 线报数据保留时间，超过这个时间的数据将被自动清理
 send_message_on_success = true            # 线报转链成功后是否发送消息
