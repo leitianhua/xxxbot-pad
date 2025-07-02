@@ -193,6 +193,10 @@ class ToolLinkRebate(PluginBase):
           - 成功时: (True, 转链内容, "")
           - 失败时: (False, 原内容, 错误消息)
         """
+        # 如果是拼多多不转链
+        if 'pinduoduo' in text:
+            return False, text, "不支持pdd"
+
         try:
             url = "https://api.zhetaoke.cn:10001/api/open_gaoyongzhuanlian_tkl_piliang.ashx"
 
@@ -267,7 +271,9 @@ class ToolLinkRebate(PluginBase):
                         data = result.get("msg", [])
                         return data
                     else:
-                        logger.error(f"获取[{keyword}]线报失败: {result.get('status')}, 消息: {result.get('content', '')}")
+                        # 301 表示没有数据
+                        if result.get("status") != 301:
+                            logger.error(f"获取[{keyword}]线报失败: {result.get('status')}, 消息: {result.get('content', '')}")
                         return []
                 except json.JSONDecodeError:
                     logger.error("线报响应解析失败")
@@ -356,7 +362,7 @@ class ToolLinkRebate(PluginBase):
                                 logger.error(f"更新记录失败: {str(e)}, pic: {pic}")
                     else:
                         # 记录已存在且不需要更新
-                        logger.debug(f"线报已存在且不需要更新: {content}")
+                        logger.debug(f"线报已存在且不需要更新: {content[:80]}")
                 else:
                     # 记录不存在，处理内容并插入新记录
                     urls, urls_json, success, formatted_content, converted_content = self._process_xianbao_content(content)
