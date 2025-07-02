@@ -32,4 +32,4 @@ receivers = [
 ]
 filter_keywords = ["楼上"]
 data_retention_minutes = 180                   # 线报数据保留时间，超过这个时间的数据将被自动清理
-send_message_on_success = true            # 线报转链成功后是否发送消息
+xianbao_push_message = true            # 是否推送线报消息

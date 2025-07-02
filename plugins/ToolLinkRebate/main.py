@@ -73,8 +73,8 @@ class ToolLinkRebate(PluginBase):
             self.xianbao_filter_keywords = xianbao_config.get("filter_keywords", [])
             # 线报数据保留分钟数
             self.data_retention_minutes = xianbao_config.get("data_retention_minutes", 180)  # 默认3小时
-            # 线报转链成功后是否发送消息
-            self.xianbao_send_message_on_success = xianbao_config.get("send_message_on_success", True)
+            # 是否推送线报消息
+            self.xianbao_push_message = xianbao_config.get("push_message", True)
 
             # 记录上次执行时间
             self.last_execution_time = datetime.datetime.now()
@@ -100,7 +100,7 @@ class ToolLinkRebate(PluginBase):
                 logger.success(f"线报接收者: {self.xianbao_receivers}")
                 logger.success(f"线报过滤关键词: {self.xianbao_filter_keywords}")
                 logger.success(f"线报数据保留分钟数: {self.data_retention_minutes}")
-                logger.success(f"线报转链成功后是否发送消息: {self.xianbao_send_message_on_success}")
+                logger.success(f"是否推送线报消息: {self.xianbao_push_message}")
 
                 # 初始化线报数据库
                 self._init_xianbao_database()
@@ -541,56 +541,61 @@ class ToolLinkRebate(PluginBase):
         for keyword in self.xianbao_keywords:
             # 调用API获取线报数据
             xianbao_data = self.get_xianbao_data(keyword)
-
+            
             # 保存到数据库并获取新增的有效线报数量
             new_items_count = self.save_xianbao_to_database(xianbao_data)
             new_data_count += new_items_count
             logger.debug(f"{keyword}-线报数量：{len(xianbao_data)}-新数量：{new_items_count}")
 
         logger.success(f"共获取到 {new_data_count} 条新线报数据")
-
+        
         # 2. 获取未推送的线报数据并推送
+        # 如果配置为不推送消息，则跳过推送步骤
+        if not self.xianbao_push_message:
+            logger.info("配置为不推送线报消息，跳过推送步骤")
+            return
+            
         unpushed_items = self.get_unpushed_xianbao()
         if unpushed_items:
             logger.success(f"找到 {len(unpushed_items)} 条待推送的线报数据")
-
+            
             # 处理每条未推送的线报数据
             for item in unpushed_items:
                 pic = item['pic']
                 content_converted = item['content_converted']
                 urls = item['urls']
-
+                
                 # 检查是否包含过滤关键词
                 should_filter, filter_keyword = self.should_filter_xianbao(content_converted)
                 if should_filter:
                     logger.info(f"线报包含过滤关键词 '{filter_keyword}'，跳过推送并标记为已推送")
                     self.update_xianbao_push_status(pic)
                     continue
-
+                
                 # 构建完整的线报消息
                 message = content_converted
-
+                
                 # 发送给所有接收者
                 push_success = True
                 for receiver in self.xianbao_receivers:
                     try:
                         # 发送文本
                         await bot.send_text_message(receiver, message)
-
+                        
                         # 发送图片
                         for url in urls:
                             image_byte = self._download_http_image(url)
                             if image_byte:
                                 await bot.send_image_message(receiver, image_byte)
-
+                                
                     except Exception as e:
                         logger.error(f"发送线报到 {receiver} 失败: {str(e)}")
                         logger.error(traceback.format_exc())
                         push_success = False
-
+                    
                     # 避免发送过快
                     await asyncio.sleep(1)
-
+                
                 # 更新推送状态
                 if push_success:
                     self.update_xianbao_push_status(pic)
