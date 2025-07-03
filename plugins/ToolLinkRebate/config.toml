@@ -32,4 +32,4 @@ receivers = [
 ]
 filter_keywords = ["楼上"]
 data_retention_minutes = 180                   # 线报数据保留时间，超过这个时间的数据将被自动清理
-xianbao_push_message = true            # 是否推送线报消息
+push_message = false            # 是否推送线报消息
