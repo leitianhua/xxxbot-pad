@@ -30,6 +30,6 @@ receivers = [
 #    "48829307931@chatroom",        # 得物禁言群
     "52620932598@chatroom",        # 得物测试群
 ]
-filter_keywords = ["楼上"]
+filter_keywords = ["^(?!.*楼上)(?=.*(?:得|鍀|锝)物)(?=.*到手).+$"]
 data_retention_minutes = 180                   # 线报数据保留时间，超过这个时间的数据将被自动清理
 push_message = false            # 是否推送线报消息

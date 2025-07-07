@@ -473,19 +473,23 @@ class ToolLinkRebate(PluginBase):
 
     def should_filter_xianbao(self, content):
         """
-        检查线报内容是否包含过滤关键词
+        检查线报内容是否匹配过滤正则表达式规则
         
         返回值:
-        - Tuple[bool, str]: (是否应该过滤, 匹配的关键词)
-          - 应该过滤: (True, 匹配的关键词)
-          - 不应该过滤: (False, "")
+        - Tuple[bool, str]: (是否应该过滤, 匹配的正则表达式)
+          - 匹配任意一条正则表达式: (True, 匹配的正则表达式)
+          - 未匹配: (False, "")
         """
         if not self.xianbao_filter_keywords:
             return False, ""
 
-        for keyword in self.xianbao_filter_keywords:
-            if keyword in content:
-                return True, keyword
+        for pattern in self.xianbao_filter_keywords:
+            try:
+                if re.search(pattern, content):
+                    return True, pattern
+            except re.error as e:
+                logger.error(f"无效的正则表达式: {pattern}, 错误: {e}")
+                continue
 
         return False, ""
 
@@ -541,61 +545,61 @@ class ToolLinkRebate(PluginBase):
         for keyword in self.xianbao_keywords:
             # 调用API获取线报数据
             xianbao_data = self.get_xianbao_data(keyword)
-            
+
             # 保存到数据库并获取新增的有效线报数量
             new_items_count = self.save_xianbao_to_database(xianbao_data)
             new_data_count += new_items_count
             logger.debug(f"{keyword}-线报数量：{len(xianbao_data)}-新数量：{new_items_count}")
 
         logger.success(f"共获取到 {new_data_count} 条新线报数据")
-        
+
         # 2. 获取未推送的线报数据并推送
         # 如果配置为不推送消息，则跳过推送步骤
         if not self.xianbao_push_message:
             logger.info("配置为不推送线报消息，跳过推送步骤")
             return
-            
+
         unpushed_items = self.get_unpushed_xianbao()
         if unpushed_items:
             logger.success(f"找到 {len(unpushed_items)} 条待推送的线报数据")
-            
+
             # 处理每条未推送的线报数据
             for item in unpushed_items:
                 pic = item['pic']
                 content_converted = item['content_converted']
                 urls = item['urls']
-                
+
                 # 检查是否包含过滤关键词
-                should_filter, filter_keyword = self.should_filter_xianbao(content_converted)
-                if should_filter:
-                    logger.info(f"线报包含过滤关键词 '{filter_keyword}'，跳过推送并标记为已推送")
+                should_filter, filter_pattern = self.should_filter_xianbao(content_converted)
+                if not should_filter:
+                    logger.info(f"线报内容不匹配 '{filter_pattern}'，跳过推送并标记为已推送")
                     self.update_xianbao_push_status(pic)
                     continue
-                
+
                 # 构建完整的线报消息
                 message = content_converted
-                
+
                 # 发送给所有接收者
                 push_success = True
                 for receiver in self.xianbao_receivers:
                     try:
                         # 发送文本
                         await bot.send_text_message(receiver, message)
-                        
+
                         # 发送图片
                         for url in urls:
                             image_byte = self._download_http_image(url)
                             if image_byte:
                                 await bot.send_image_message(receiver, image_byte)
-                                
+
                     except Exception as e:
                         logger.error(f"发送线报到 {receiver} 失败: {str(e)}")
                         logger.error(traceback.format_exc())
                         push_success = False
-                    
+
                     # 避免发送过快
                     await asyncio.sleep(1)
-                
+
                 # 更新推送状态
                 if push_success:
                     self.update_xianbao_push_status(pic)
