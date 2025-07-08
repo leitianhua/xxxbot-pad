@@ -476,22 +476,23 @@ class ToolLinkRebate(PluginBase):
         检查线报内容是否匹配过滤正则表达式规则
         
         返回值:
-        - Tuple[bool, str]: (是否应该过滤, 匹配的正则表达式)
-          - 匹配任意一条正则表达式: (True, 匹配的正则表达式)
-          - 未匹配: (False, "")
+        - Tuple[bool]: (是否应该过滤)
+          - 匹配任意一条正则表达式: (True)
+          - 未匹配: (False)
         """
+        # 未配置则都通过
         if not self.xianbao_filter_keywords:
-            return False, ""
+            return True
 
         for pattern in self.xianbao_filter_keywords:
             try:
-                if re.search(pattern, content):
-                    return True, pattern
+                if re.search(pattern, content, re.DOTALL):
+                    return True
             except re.error as e:
                 logger.error(f"无效的正则表达式: {pattern}, 错误: {e}")
                 continue
 
-        return False, ""
+        return False
 
     def update_xianbao_push_status(self, pic):
         """更新线报的推送状态"""
@@ -570,9 +571,9 @@ class ToolLinkRebate(PluginBase):
                 urls = item['urls']
 
                 # 检查是否包含过滤关键词
-                should_filter, filter_pattern = self.should_filter_xianbao(content_converted)
+                should_filter = self.should_filter_xianbao(content_converted)
                 if not should_filter:
-                    logger.info(f"线报内容不匹配 '{filter_pattern}'，跳过推送并标记为已推送")
+                    logger.info(f"线报内容{content_converted}-不匹配 '{self.xianbao_filter_keywords}'，跳过推送并标记为已推送")
                     self.update_xianbao_push_status(pic)
                     continue
 

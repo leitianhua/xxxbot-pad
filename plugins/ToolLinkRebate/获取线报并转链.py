@@ -418,22 +418,23 @@ class ToolLinkRebate(PluginBase):
         检查线报内容是否匹配过滤正则表达式规则
 
         返回值:
-        - Tuple[bool, str]: (是否应该过滤, 匹配的正则表达式)
-          - 匹配任意一条正则表达式: (True, 匹配的正则表达式)
-          - 未匹配: (False, "")
+        - Tuple[bool]: (是否应该过滤)
+          - 匹配任意一条正则表达式: (True)
+          - 未匹配: (False)
         """
+        # 未配置则都通过
         if not self.xianbao_filter_keywords:
-            return False, ""
+            return True
 
         for pattern in self.xianbao_filter_keywords:
             try:
-                if re.search(pattern, content):
-                    return True, pattern
+                if re.search(pattern, content, re.DOTALL):
+                    return True
             except re.error as e:
                 logger.error(f"无效的正则表达式: {pattern}, 错误: {e}")
                 continue
 
-        return False, ""
+        return False
 
     def _clear_temp_cache(self):
         """删除temp目录下的所有缓存文件"""
@@ -527,7 +528,7 @@ if __name__ == '__main__':
 
     self._clear_temp_cache()
     xianbao_keywords = ["锝物", "得物", "鍀物"]
-    xianbao_keywords = ["得物同款","【鸿星尔克】夏季新款男女小白鞋"]
+    xianbao_keywords = ["耐克Luka 4 米色 到手536 锝物639"]
 
     # 1. 获取线报数据并保存到数据库（同时进行内容转换）
     new_data_count = 0
@@ -559,10 +560,10 @@ if __name__ == '__main__':
             urls = item['urls']
 
             # 检查是否包含过滤关键词
-            should_filter, filter_pattern = self.should_filter_xianbao(content_converted)
+            should_filter = self.should_filter_xianbao(content_converted)
             if not should_filter:
-                logger.info(f"线报内容不匹配 '{filter_pattern}'，跳过推送并标记为已推送")
-                self.update_xianbao_push_status(pic)
+                logger.info(f"线报内容{content_converted}-不匹配 '{self.xianbao_filter_keywords}'，跳过推送并标记为已推送")
+                # self.update_xianbao_push_status(pic)
                 continue
 
             # 构建完整的线报消息
