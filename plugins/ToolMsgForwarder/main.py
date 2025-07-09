@@ -147,51 +147,25 @@ class ToolMsgForwarder(PluginBase):
             return f"[转发自 {from_name}]:\n\n"
 
     async def _process_forwarding(
-            self, bot, message: dict, msg_content_key: str,
-            send_action, is_media: bool = False, filename_key: str = None,
-            skip_rule_matching: bool = False
+            self, bot, message: dict, msg_type: str, skip_rule_matching: bool = False
     ):
         """
         转发消息处理逻辑
-        
         参数:
         - bot: 机器人实例
         - message: 消息字典
-        - msg_content_key: 消息内容的键名
-        - send_action: 发送消息的方法
-        - is_media: 是否为媒体消息
-        - filename_key: 文件名的键名
+        - msg_type: 消息类型（由handler传入）
         - skip_rule_matching: 是否跳过规则匹配，直接转发给所有目标
         """
         # 如果插件被禁用，直接返回
         if not self.enable:
             return True
-            
+
         # 获取消息基本信息
         msg_id = message.get('MsgId', '未知ID')
         from_wxid = message.get('FromWxid', '未知来源')
         sender_wxid = message.get('SenderWxid', '与来源相同')
         is_group = message.get('IsGroup', False)
-
-        # 确定消息类型
-        msg_type = "text"
-        if msg_content_key == "File":
-            msg_type = "file"
-        elif msg_content_key == "Video":
-            msg_type = "video"
-        elif is_media:
-            msg_type = "image"
-        
-        # 检查是否是XML消息或已转换的XML消息
-        is_xml_message = False
-        content = message.get(msg_content_key, "")
-        if isinstance(content, str) and content.strip().startswith("<"):
-            is_xml_message = True
-            msg_type = "xml"
-        elif message.get("XmlConverted", False):
-            # 这是已经转换过的XML消息
-            is_xml_message = False
-            msg_type = "text"  # 已转换为文本
 
         logger.debug(
             f"[ToolMsgForwarder] 收到{msg_type}消息: ID={msg_id}, 来源={from_wxid}, "
@@ -206,63 +180,61 @@ class ToolMsgForwarder(PluginBase):
             return True
 
         # 检查消息内容是否存在
-        original_content = message.get(msg_content_key)
-        if original_content is None or (is_media and not original_content):
+        original_content = message.get("Content")
+        if original_content is None or (msg_type in ["image", "file", "video"] and not original_content):
             logger.warning(f"[ToolMsgForwarder] {msg_type}消息内容为空，消息ID: {msg_id}")
             return True
 
         # 初始化计数器
         matched_count = 0
         processed_count = 0
-        
+
         # 处理消息转发
         if skip_rule_matching:
             # 跳过规则匹配，直接处理所有启用的规则
             logger.debug(f"[ToolMsgForwarder] 跳过规则匹配，直接处理消息")
-            
+
             # 创建一个已处理的目标集合，避免重复转发
             processed_targets = set()
-            
+
             for i, rule in enumerate(rules):
                 if not rule.get("enabled", False):
                     continue
-                    
+
                 # 获取转发目标
                 targets = rule.get("to_wxids", [])
                 if not targets:
                     continue
-                
+
                 # 过滤掉已处理过的目标
                 new_targets = [t for t in targets if t not in processed_targets]
                 if not new_targets:
                     continue
-                    
+
                 # 规则匹配成功
                 matched_count += 1
                 rule_id = f"规则#{i + 1}"
                 logger.debug(f"[ToolMsgForwarder] 使用{rule_id}，转发给{len(new_targets)}个目标")
-                
+
                 # 将匹配的规则添加到消息中，用于后续获取别名
                 message["MatchedRule"] = rule
-                
-                # 转发给每个目标
+
+                # 调用 _forward_to_targets 时去掉未用参数
                 await self._forward_to_targets(
-                    bot, message, rule, new_targets, msg_type, 
-                    msg_content_key, original_content, 
-                    is_xml_message, send_action, filename_key
+                    bot, message, rule, new_targets, msg_type, original_content
                 )
-                
+
                 # 记录已处理的目标
                 processed_targets.update(new_targets)
                 processed_count += len(new_targets)
-                
+
         else:
             # 使用规则匹配
             logger.debug(f"[ToolMsgForwarder] 开始匹配{len(rules)}条规则")
-            
+
             # 创建一个已处理的目标集合，避免重复转发
             processed_targets = set()
-            
+
             # 遍历规则进行匹配
             for i, rule in enumerate(rules):
                 rule_id = f"规则#{i + 1}"
@@ -296,7 +268,7 @@ class ToolMsgForwarder(PluginBase):
                 if not targets:
                     logger.debug(f"[ToolMsgForwarder] {rule_id}没有配置转发目标，跳过")
                     continue
-                
+
                 # 过滤掉已处理过的目标
                 new_targets = [t for t in targets if t not in processed_targets]
                 if not new_targets:
@@ -310,13 +282,11 @@ class ToolMsgForwarder(PluginBase):
                 # 将匹配的规则添加到消息中，用于后续获取别名
                 message["MatchedRule"] = rule
 
-                # 转发给每个目标
+                # 调用 _forward_to_targets 时去掉未用参数
                 await self._forward_to_targets(
-                    bot, message, rule, new_targets, msg_type, 
-                    msg_content_key, original_content, 
-                    is_xml_message, send_action, filename_key
+                    bot, message, rule, new_targets, msg_type, original_content
                 )
-                
+
                 # 记录已处理的目标
                 processed_targets.update(new_targets)
                 processed_count += len(new_targets)
@@ -326,39 +296,22 @@ class ToolMsgForwarder(PluginBase):
             f"匹配规则数={matched_count}, 成功转发数={processed_count}"
         )
         return True
-        
+
     async def _forward_to_targets(
-            self, bot, message, rule, targets, msg_type, 
-            msg_content_key, original_content, is_xml_message, 
-            send_action, filename_key=None
+            self, bot, message, rule, targets, msg_type, original_content
     ):
-        """转发消息到目标列表"""
-        prepend_info = rule.get("prepend_info", True)
-        
-        # XML消息不添加前缀信息
-        prefix = ""
-        if prepend_info and not is_xml_message and not message.get("DisableMediaPrefix", False):
-            prefix = self._get_forward_prefix(message)
-            
-        # 转发给每个目标
+        # prepend_info = rule.get("prepend_info", True)
+        # prefix = ""  # 不再需要前缀
+        # if prepend_info and msg_type != "xml" and not message.get("DisableMediaPrefix", False):
+        #     prefix = self._get_forward_prefix(message)
         for target_wxid in targets:
             try:
                 content_to_send = original_content
-
-                # 处理前缀信息（仅用于文本消息且不是XML消息）
-                if prepend_info and msg_type == "text" and not is_xml_message:
-                    content_to_send = f"{prefix}{original_content}"
-
-                # 获取目标名称（显示）
-                target_names = rule.get("target_names", {})
-                target_name = target_names.get(target_wxid, target_wxid)
-
-                # 对文本消息进行转链处理
-                if msg_type == "text" and self.rebate_config.get("enable", False):
+                # 只对文本和xml做转链
+                if msg_type in ("text", "xml") and self.rebate_config.get("enable", False):
                     enable_rebate = rule.get("enable_rebate", True)
                     if enable_rebate:
                         try:
-                            # 检查是否有匹配的内容需要转链
                             has_match, match_type = self._check_for_matches(content_to_send)
                             if has_match:
                                 logger.info(f"[ToolMsgForwarder] 检测到{match_type}，开始转链")
@@ -371,26 +324,19 @@ class ToolMsgForwarder(PluginBase):
                                     logger.info(f"[ToolMsgForwarder] 转链成功")
                         except Exception as e:
                             logger.error(f"[ToolMsgForwarder] 转换链接时发生错误: {e}")
-
-                # 发送实际内容
-                logger.debug(f"[ToolMsgForwarder] 发送{msg_type}内容到 {target_name}")
-
-                if filename_key:
-                    file_name = message.get(filename_key, "未知文件")
-                    # 检查 send_action 是否直接是 bot 方法
-                    if callable(send_action) and hasattr(bot, send_action.__name__):
-                        await send_action(target_wxid, content_to_send, file_name)
-                    else:
-                        await send_action(bot, target_wxid, content_to_send, file_name)
-                else:
-                    # 检查 send_action 是否直接是 bot 方法
-                    if callable(send_action) and hasattr(bot, send_action.__name__):
-                        await send_action(target_wxid, content_to_send)
-                    else:
-                        await send_action(bot, target_wxid, content_to_send)
-
-                logger.debug(f"[ToolMsgForwarder] 成功转发到 {target_name}")
-
+                # logger.info(f"[ToolMsgForwarder] 准备转发内容: {content_to_send}")
+                # 发送
+                if msg_type == "text":
+                    await bot.send_text_message(target_wxid, content_to_send)
+                elif msg_type == "xml":
+                    await bot.send_text_message(target_wxid, content_to_send)
+                elif msg_type == "image":
+                    await bot.send_image_message(target_wxid, content_to_send)
+                elif msg_type == "file":
+                    await bot.send_cdn_file_msg(target_wxid, content_to_send)
+                elif msg_type == "video":
+                    await bot.send_cdn_video_msg(target_wxid, content_to_send)
+                logger.debug(f"[ToolMsgForwarder] 成功转发到 {target_wxid}")
             except Exception as e:
                 logger.error(f"[ToolMsgForwarder] 转发消息到 {target_wxid} 失败: {e}")
                 import traceback
@@ -398,18 +344,17 @@ class ToolMsgForwarder(PluginBase):
 
     @on_text_message(priority=99)
     async def handle_text_forward(self, bot, message: dict):
-        """处理文本消息转发"""
-        return await self._process_forwarding(bot, message, "Content", bot.send_text_message)
+        return await self._process_forwarding(bot, message, msg_type="text")
 
     @on_xml_message(priority=99)
     async def handle_xml_forward(self, bot, message: dict):
-        """处理xml消息转发，提取标题、描述和链接"""
+        """处理xml消息转发，提取标题、描述和链接，转链成功则发文本，否则原样xml"""
         try:
             # 尝试提取XML中的关键信息
             content = message.get("Content", "")
             import xml.etree.ElementTree as ET
             root = ET.fromstring(content)
-            
+
             # 查找appmsg节点
             appmsg = root.find(".//appmsg")
             if appmsg is not None:
@@ -417,64 +362,52 @@ class ToolMsgForwarder(PluginBase):
                 title_elem = appmsg.find("title")
                 des_elem = appmsg.find("des")
                 url_elem = appmsg.find("url")
-                
                 if title_elem is not None and url_elem is not None:
                     # 提取基本信息
                     title = title_elem.text or "分享"
                     description = des_elem.text if des_elem is not None else ""
                     url = url_elem.text or ""
-                    
+
                     if url:
                         logger.info(f"[ToolMsgForwarder] 从XML提取到信息: 标题={title}, URL={url}")
-                        
+
                         # 检查是否需要转链
                         has_match, match_type = self._check_for_matches(url)
                         converted_url = url
-                        
+
                         # 如果启用了转链且匹配到链接
                         if has_match and self.rebate_config.get("enable", False):
                             logger.info(f"[ToolMsgForwarder] 检测到{match_type}，尝试转链")
                             converted_url = self._convert_link(url)
                             if converted_url and converted_url != url:
                                 logger.info(f"[ToolMsgForwarder] 转链成功")
-                        
+
                         # 从描述中提取产品名称 - 针对特定格式
                         product_name = self._extract_product_name(description, title)
-                        
+
                         # 创建指定格式的输出
                         extracted_content = f"{product_name}\n{converted_url}"
-                        
-                        # 修改原始消息内容为提取后的文本
-                        message["Content"] = extracted_content
-                        logger.debug(f"[ToolMsgForwarder] 将XML转换为指定格式: {extracted_content}")
-                        
-                        # 标记消息来源，用于后续规则匹配
-                        message["XmlConverted"] = True
+
+                        # 如果转链后内容和原始url不同，说明转链成功，发文本
+                        if converted_url and converted_url != url:
+                            message["Content"] = extracted_content
+                            return await self._process_forwarding(bot, message, msg_type="text")
         except Exception as e:
             logger.error(f"[ToolMsgForwarder] 提取XML内容时出错: {e}")
-            # 出错时继续使用原始XML
-        
-        # 使用统一规则处理转换后的消息，但不跳过规则匹配
-        # 这样可以确保只有匹配的规则会被应用
-        return await self._process_forwarding(bot, message, "Content", bot.send_text_message)
+        # 转链失败或异常，原样xml转发
+        return await self._process_forwarding(bot, message, msg_type="xml")
 
     @on_image_message(priority=99)
     async def handle_image_forward(self, bot, message: dict):
-        """处理图片消息转发"""
-        message["DisableMediaPrefix"] = True  # 添加标记，禁用媒体消息前缀
-        return await self._process_forwarding(bot, message, "Content", bot.send_image_message, is_media=True)
+        return await self._process_forwarding(bot, message, msg_type="image")
 
     @on_file_message(priority=99)
     async def handle_file_forward(self, bot, message: dict):
-        """处理文件消息转发"""
-        message["DisableMediaPrefix"] = True  # 添加标记，禁用媒体消息前缀
-        return await self._process_forwarding(bot, message, "File", bot.send_file_message, is_media=True, filename_key="Filename")
+        return await self._process_forwarding(bot, message, msg_type="file")
 
     @on_video_message(priority=99)
     async def handle_video_forward(self, bot, message: dict):
-        """处理视频消息转发"""
-        message["DisableMediaPrefix"] = True  # 添加标记，禁用媒体消息前缀
-        return await self._process_forwarding(bot, message, "Video", bot.send_video_message, is_media=True)
+        return await self._process_forwarding(bot, message, msg_type="video")
 
     def _check_for_matches(self, content):
         """
@@ -484,17 +417,17 @@ class ToolMsgForwarder(PluginBase):
         # 淘口令匹配模式
         patterns = [
             (re.compile(r"([¥￥$].*?[¥￥$])"), "淘口令模式1"),  # 以货币符号开头和结尾的淘口令
-            (re.compile(r"([¥￥$].*?[/\\])"), "淘口令模式2"),   # 以货币符号开头，以斜杠结尾的淘口令
-            (re.compile(r"(\(\(.*?://)"), "淘口令模式3"),       # 以双括号开头，包含://的淘口令
+            (re.compile(r"([¥￥$].*?[/\\])"), "淘口令模式2"),  # 以货币符号开头，以斜杠结尾的淘口令
+            (re.compile(r"(\(\(.*?://)"), "淘口令模式3"),  # 以双括号开头，包含://的淘口令
             (re.compile(r"\(([a-zA-Z0-9]{10,})\)"), "淘口令模式4"),  # 括号内的10位以上字母数字组合
             (re.compile(r"https?://(s\.click\.taobao\.com|m\.tb\.cn)/[^\s<]*"), "淘宝链接"),  # 淘宝短链接
             (re.compile(r"https?://u\.jd\.com/[A-Za-z0-9]+"), "京东链接"),  # 京东短链接
         ]
-        
+
         for pattern, match_type in patterns:
             if pattern.search(content):
                 return True, match_type
-                
+
         return False, "无匹配"
 
     def _convert_link(self, text):
@@ -537,7 +470,7 @@ class ToolMsgForwarder(PluginBase):
         """从描述中提取产品名称"""
         if not description:
             return default_title
-            
+
         # 尝试提取"品名:xxx"格式
         if "品名:" in description:
             name_parts = description.split("品名:", 1)
@@ -550,6 +483,6 @@ class ToolMsgForwarder(PluginBase):
                     product_parts = name_parts[1].split("\n", 1)
                     if len(product_parts) > 0:
                         return product_parts[0].strip()
-        
+
         # 如果没有从描述中提取到产品名称，则使用标题
         return default_title
