@@ -15,16 +15,6 @@ pid = "mm_375930105_2518750017_111777500003"  # 淘宝联盟pid，格式为mm_xx
 # ==================== 统一规则配置 ====================
 [[ToolMsgForwarder.rules]]
 enabled = true
-name = "ces"
-from_wxid = "43353238030@chatroom"          # 小橘相纸
-# 不设置listen_specific_senders_in_group则监听群内所有人
-to_wxids = ["43353238030@chatroom"]          # 小橘相纸
-prepend_info = true
-msg_types = ["text", "image", "xml"]
-enable_rebate = true                       # 启用转链功能（对文本消息生效）
-
-[[ToolMsgForwarder.rules]]
-enabled = true
 name = "转发合并"
 from_wxid = "47410316718@chatroom"          # 转发开始
 # 不设置listen_specific_senders_in_group则监听群内所有人
@@ -33,13 +23,30 @@ prepend_info = false
 msg_types = ["text", "image", "video","file"]
 enable_rebate = false                       # 启用转链功能（对文本消息生效）
 
-# 多功能转发-指定发送者
+# 闪购免单码
 [[ToolMsgForwarder.rules]]
 enabled = true
-name = "消息群发群"
-from_wxid = "9278245163@chatroom"          # 消息群发群
-listen_specific_senders_in_group = ["wxid_l4u1u9bgq5u022"]  # 只监听此用户
+name = "闪购免单码-小梨"
+from_wxid = "38832367307@chatroom"          # 小梨交流群
+listen_specific_senders_in_group = [
+    "25984985928202103@openim" # 闪购发码人
+]  
+text_filter_keywords = ["^[0-9A-Z]{6}$"]
 to_wxids = ["9278245163@chatroom"]          # 转发目标
 prepend_info = false
-msg_types = ["text", "image", "file", "video"]  # 处理所有类型消息
+msg_types = ["text"]  # 处理所有类型消息
+enable_rebate = false                      # 禁用转链功能
+
+# 闪购免单码
+[[ToolMsgForwarder.rules]]
+enabled = true
+name = "闪购免单码-酷儿"
+from_wxid = "44611232930@chatroom"          # 酷儿
+listen_specific_senders_in_group = [
+    "wxid_w48lc66dv2cs12" # 酷儿
+]
+text_filter_keywords = ["^[0-9A-Z]{6}$"]
+to_wxids = ["9278245163@chatroom"]          # 转发目标
+prepend_info = false
+msg_types = ["text"]  # 处理所有类型消息
 enable_rebate = false                      # 禁用转链功能

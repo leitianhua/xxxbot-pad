@@ -27,7 +27,7 @@ class ToolMsgForwarder(PluginBase):
         self.plugin_config = {}
         self.enable = True  # 默认启用
         self.unified_rules = []  # 通用规则数组
-
+        # self.text_filter_keywords = []  # 移除全局文本过滤正则表达式数组
         # 转链功能配置
         self.rebate_config = {
             "enable": True,  # 是否启用转链功能
@@ -62,6 +62,11 @@ class ToolMsgForwarder(PluginBase):
             config = toml_data[plugin_name]
             self.plugin_config = config
             logger.debug(f"[ToolMsgForwarder] 已读取配置: {list(config.keys())}")
+
+            # 移除全局文本过滤正则表达式加载
+            # self.text_filter_keywords = config.get("text_filter_keywords", [])
+            # if self.text_filter_keywords:
+            #     logger.info(f"[ToolMsgForwarder] 已加载文本过滤正则: {self.text_filter_keywords}")
 
             # 加载插件状态
             self.enable = config.get("enable", True)
@@ -206,6 +211,21 @@ class ToolMsgForwarder(PluginBase):
                 if not targets:
                     continue
 
+                # 文本消息过滤：如规则配置了 text_filter_keywords，只有匹配正则的文本才转发
+                if msg_type == "text" and rule.get("text_filter_keywords"):
+                    import re
+                    matched = False
+                    for pattern in rule["text_filter_keywords"]:
+                        try:
+                            if re.search(pattern, original_content):
+                                matched = True
+                                break
+                        except Exception as e:
+                            logger.error(f"[ToolMsgForwarder] 文本过滤正则表达式错误: {pattern}, 错误: {e}")
+                    if not matched:
+                        logger.info(f"[ToolMsgForwarder] 文本消息未匹配规则过滤正则，跳过该规则: {original_content}")
+                        continue
+
                 # 过滤掉已处理过的目标
                 new_targets = [t for t in targets if t not in processed_targets]
                 if not new_targets:
@@ -261,6 +281,21 @@ class ToolMsgForwarder(PluginBase):
                     specific_senders = rule.get("listen_specific_senders_in_group", [])
                     if specific_senders and sender_wxid not in specific_senders:
                         logger.debug(f"[ToolMsgForwarder] {rule_id}指定了监听特定用户，但发送者不在列表中，跳过")
+                        continue
+
+                # 文本消息过滤：如规则配置了 text_filter_keywords，只有匹配正则的文本才转发
+                if msg_type == "text" and rule.get("text_filter_keywords"):
+                    import re
+                    matched = False
+                    for pattern in rule["text_filter_keywords"]:
+                        try:
+                            if re.search(pattern, original_content):
+                                matched = True
+                                break
+                        except Exception as e:
+                            logger.error(f"[ToolMsgForwarder] 文本过滤正则表达式错误: {pattern}, 错误: {e}")
+                    if not matched:
+                        logger.info(f"[ToolMsgForwarder] 文本消息未匹配规则过滤正则，跳过该规则: {original_content}")
                         continue
 
                 # 获取转发目标
