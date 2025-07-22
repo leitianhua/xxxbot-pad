@@ -32,7 +32,7 @@ listen_specific_senders_in_group = [
     "25984985928202103@openim" # 闪购发码人
 ]  
 text_filter_keywords = ["^[0-9A-Z]{6}$"]
-to_wxids = ["9278245163@chatroom"]          # 转发目标
+to_wxids = ["43353238030@chatroom"]          # 转发目标
 prepend_info = false
 msg_types = ["text"]  # 处理所有类型消息
 enable_rebate = false                      # 禁用转链功能
@@ -46,7 +46,7 @@ listen_specific_senders_in_group = [
     "wxid_w48lc66dv2cs12" # 酷儿
 ]
 text_filter_keywords = ["^[0-9A-Z]{6}$"]
-to_wxids = ["9278245163@chatroom"]          # 转发目标
+to_wxids = ["43353238030@chatroom"]          # 转发目标
 prepend_info = false
 msg_types = ["text"]  # 处理所有类型消息
 enable_rebate = false                      # 禁用转链功能
