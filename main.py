@@ -12,18 +12,13 @@ from loguru import logger
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-# 修改导入语句，确保导入正确的bot_core模块
-try:
-    # 先尝试使用相对导入（当前目录）
-    from .bot_core import bot_core
-except ImportError:
-    # 如果相对导入失败，尝试使用绝对导入（当前目录）
-    import sys
-    import os
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    if current_dir not in sys.path:
-        sys.path.append(current_dir)
-    from bot_core import bot_core, set_bot_instance, update_bot_status
+# 确保正确导入bot_core模块
+import sys
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+from bot_core import bot_core, set_bot_instance, update_bot_status
 
 # 管理后台启动函数
 def start_admin_server(config):

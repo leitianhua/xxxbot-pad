@@ -1,27 +1,33 @@
 # 🤖 XXXBot 机器人项目 🤖
 
 > ## ⚠️ 免责声明
->
+> 
 > **本项目仅供学习交流使用，严禁用于商业用途！**
 > 使用本项目所产生的一切法律责任和风险，由使用者自行承担，与项目作者无关。
 > 请遵守相关法律法规，合法合规使用本项目。
 
 ## 📝 项目概述
 
-XXXBot 是一个基于微信的智能机器人系统，通过整合多种 API 和功能，提供了丰富的交互体验。本系统包含管理后台界面，支持插件扩展，具备联系人管理、文件管理、系统状态监控等功能，同时与人工智能服务集成，提供智能对话能力。系统支持多种微信接口，包括 PAD 协议和 WeChatAPI，可根据需要灵活切换。
+XXXBot 是一个基于微信的智能机器人系统，通过整合多种 API 和功能，提供了丰富的交互体验。本系统包含管理后台界面，支持插件扩展，具备联系人管理、文件管理、系统状态监控等功能，同时与人工智能服务集成，提供智能对话能力。系统采用优化的架构设计，提升了性能和稳定性。
 
-### 🔄 双协议支持与框架模式
+> ### 🔍 近期优化成果
+> - 精简了项目依赖，从 42 个减少到 23 个必要依赖
+> - 重构了配置文件，提高了可读性和维护性
+> - 移除了 legacy 代码和过期资源，优化了项目结构
+> - 提升了启动速度和运行效率
 
-本系统现已支持多种微信协议版本和框架模式：
+### 🔄 协议支持与框架模式
+
+本系统支持多种微信协议版本和框架模式：
 
 #### 协议版本支持
 
-暂时只能使用 Mac 协议
+- **Mac 协议**：推荐使用，适用于 Mac 版本，使用 `/api` 路径前缀（Mac 登录后请不要使用 PC 登录 bot）
+- **849 协议**：适用于 iPad 版本，使用 `/VXAPI` 路径前缀（已优化支持）
+- **855 协议**：适用于安卓 PAD 版本，使用 `/api` 路径前缀（已优化支持）
+- **ipad 协议**：适用于新版 iPad 协议，使用 `/api` 路径前缀（已优化支持）
 
-- **849 协议**：适用于 iPad 版本，使用 `/VXAPI` 路径前缀
-- **855 协议**：适用于安卓 PAD 版本，使用 `/api` 路径前缀
-- **ipad 协议**：适用于新版 iPad 协议，使用 `/api` 路径前缀
-- **Mac**：适用于 Mac 协议，使用 `/api` 路径前缀（Mac 登录后请不要使用 PC 登录 bot）
+> 提示：我们已优化了协议切换逻辑，使协议选择更加灵活和稳定
 
 #### 框架模式支持（所有协议版本均支持）
 
@@ -154,6 +160,16 @@ version = "849"  # 可选值：849, 855, ipad, Mac
 
 2. **安装依赖**
 
+   我们提供了优化后的依赖列表，显著减少了依赖数量：
+
+   ```bash
+   pip install -r requirements-optimized.txt
+   ```
+
+   > 提示：优化后的依赖列表从原来的42个减少到23个必要依赖，提高了安装速度和运行效率
+
+   如果需要安装完整依赖（不推荐）：
+
    ```bash
    pip install -r requirements.txt
    ```
@@ -172,8 +188,16 @@ version = "849"  # 可选值：849, 855, ipad, Mac
 
 5. **配置**
 
-   - 复制 `main_config.toml.example` 为 `main_config.toml` 并填写配置
-   - 设置管理员 ID 和其他基本参数
+   我们提供了优化后的配置文件 `main_config-optimized.toml`，具有更清晰的组织结构和注释：
+
+   ```bash
+   # 复制优化配置文件
+   copy main_config-optimized.toml main_config.toml
+   ```
+
+   然后根据您的需求编辑 `main_config.toml` 文件，设置管理员 ID 和其他参数。
+
+   > 提示：优化配置文件对原始配置进行了重构，提高了可读性和维护性，同时保留了所有必要功能
 
    **设置管理员：**
 
@@ -567,14 +591,16 @@ option_2 = 123
 
 ## 🏗️ 技术架构
 
-- **后端**：Python FastAPI
+- **后端**：Python FastAPI（优化版）
 - **前端**：Bootstrap, Chart.js, AOS
 - **数据库**：SQLite (aiosqlite)
 - **缓存**：Redis
-- **WX 接口**：PAD 协议或 WeChatAPI
-- **外部服务**：Dify API，Google Speech-to-Text
+- **WX 接口**：优化的 WeChatAPI/Client3 实现（Mac 协议）
+- **外部服务**：Dify API
 - **容器化**：Docker
-- **Web 服务**：默认端口 9090，默认账号 admin/admin123
+- **Web 服务**：默认端口 9090，默认账号 admin/admin1234
+
+> 提示：我们优化了技术架构，移除了不必要的外部服务依赖，提升了系统的稳定性和响应速度
 
 ## 📂 项目结构
 
@@ -582,7 +608,7 @@ option_2 = 123
 XXXBot/
   ├── admin/                  # 管理后台
   │   ├── static/             # 静态资源
-  │   ├── templates/          # HTML模板
+  │   ├── templates/           # HTML模板
   │   └── friend_circle_api.py # 朋友圈API
   ├── plugins/                # 插件目录
   │   ├── Dify/               # Dify插件
@@ -592,22 +618,25 @@ XXXBot/
   ├── database/               # 数据库相关
   ├── utils/                  # 工具函数
   ├── WechatAPI/              # 微信API接口
-  ├── 849/                    # PAD协议相关
-  │   ├── pad/               # 849协议客户端（适用于 iPad）
-  │   ├── pad2/              # 855协议客户端（适用于安卓 PAD）
-  │   └── redis/             # Redis服务
-  ├── dow/                   # DOW框架目录
-  │   ├── channel/           # 通道实现
-  │   │   └── wx849/         # WX849通道
-  │   ├── app.py             # DOW框架主程序
-  │   └── requirements.txt   # DOW框架依赖
-  ├── app.py                  # 主应用入口
+  │   ├── Client3/            # Mac协议客户端
+  │   ├── Server/             # API服务器
+  │   └── core/               # 核心功能
+  ├── dow/                    # DOW框架目录
+  │   ├── channel/            # 通道实现
+  │   ├── app.py              # DOW框架主程序
+  │   └── requirements.txt    # DOW框架依赖
   ├── main.py                 # 机器人主程序
+  ├── bot_core.py             # 机器人核心逻辑
+  ├── start_service.py        # 服务启动脚本
   ├── entrypoint.sh           # Docker入口脚本
   ├── Dockerfile              # Docker构建文件
-  ├── requirements.txt        # 依赖列表
-  └── main_config.toml        # 主配置文件
+  ├── requirements.txt        # 完整依赖列表
+  ├── requirements-optimized.txt # 优化依赖列表
+  ├── main_config.toml        # 主配置文件
+  └── main_config-optimized.toml # 优化配置文件
 ```
+
+> 提示：项目结构已优化，移除了过时的 849 目录和相关文件，现在使用 WechatAPI/Client3 实现 Mac 协议支持
 
 ## 📜 协议和许可
 
