@@ -257,7 +257,7 @@ class ToolLinkRebate(PluginBase):
         if 'pinduoduo' in text:
             return False, text, "不支持pdd"
         try:
-            url = "https://api.zhetaoke.cn:10001/api/open_gaoyongzhuanlian_tkl_piliang.ashx"
+            url = "https://api.zhetaoke.com:10001/api/open_gaoyongzhuanlian_tkl_piliang.ashx"
 
             # 必填参数
             params = {

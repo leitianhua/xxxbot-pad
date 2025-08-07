@@ -468,7 +468,7 @@ class ToolMsgForwarder(PluginBase):
     def _convert_link(self, text):
         """调用折淘客API进行批量转链"""
         try:
-            url = "https://api.zhetaoke.cn:10001/api/open_gaoyongzhuanlian_tkl_piliang.ashx"
+            url = "https://api.zhetaoke.com:10001/api/open_gaoyongzhuanlian_tkl_piliang.ashx"
 
             # 必填参数
             params = {

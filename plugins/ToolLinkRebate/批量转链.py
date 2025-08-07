@@ -8,7 +8,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 def convert_taobao_link(text):
-    url = "https://api.zhetaoke.cn:10001/api/open_gaoyongzhuanlian_tkl_piliang.ashx"
+    url = "https://api.zhetaoke.com:10001/api/open_gaoyongzhuanlian_tkl_piliang.ashx"
 
     # 必填参数
     params = {
@@ -38,9 +38,11 @@ def convert_taobao_link(text):
 def main():
     sample_text = """
 
-耐克P-600 到手404 锝物539
-https://p.pinduoduo.com/bE8McSRe 
-[url=http://gchat.qpic.cn/download?appid=1407&fileid=EhR_ykTH7G6UTGbNb5UGuHj3-ITEKhj7sgQg_woozsDtmL6LjgMyBHByb2RQgL2jAVoQWLOLjpExGNaP6WOFYSO8nHoCMT4&rkey=CAISMCyaG-7bBYXQljDtmecnvxQrHo0XlSKJ4JKaXggGdQpqTQ-ivCmj15aemQu66YXurQ&spec=0]    
+EL骆驼男装官方旗舰店
+INFO | 骆驼火山2.0羽绒服M33CR07130B
+INFO | 到手399得物冬季599秒卖
+INFO | https://u.jd.com/vrXFuWp
+INFO | 需要券：https://coupon.m.jd.com/coupons/show.action?key=cbm9ccsboaa54010b222b8654a8f8752&roleId=235941435    
 """
 
     # 测试样例

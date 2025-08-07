@@ -198,7 +198,7 @@ class ToolLinkRebate(PluginBase):
             return False, text, "不支持pdd"
 
         try:
-            url = "https://api.zhetaoke.cn:10001/api/open_gaoyongzhuanlian_tkl_piliang.ashx"
+            url = "https://api.zhetaoke.com:10001/api/open_gaoyongzhuanlian_tkl_piliang.ashx"
 
             # 必填参数
             params = {
@@ -528,7 +528,7 @@ if __name__ == '__main__':
 
     self._clear_temp_cache()
     xianbao_keywords = ["锝物", "得物", "鍀物"]
-    xianbao_keywords = ["耐克Luka 4 米色 到手536 锝物639"]
+    # xianbao_keywords = ["耐克Luka 4 米色 到手536 锝物639"]
 
     # 1. 获取线报数据并保存到数据库（同时进行内容转换）
     new_data_count = 0
