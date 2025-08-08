@@ -27,6 +27,7 @@ except ImportError:
             def load(f):
                 raise ImportError("tomllib 或 tomli 库不可用，请安装 tomli 库: pip install tomli")
         tomllib = TomliNotAvailable()
+import httpx
 
 import uvicorn
 from fastapi import FastAPI, Request, Response, Depends, HTTPException, WebSocket, WebSocketDisconnect, Body, File, Form, UploadFile
@@ -639,7 +640,7 @@ def update_bot_status(status, details=None, extra_data=None):
 
                 # 如果有uuid但没有qrcode_url，尝试构建
                 if "qrcode_url" not in current_status:
-                    current_status["qrcode_url"] = f"https://api.pwmqr.com/qrcode/create/?url=http://weixin.qq.com/x/{uuid}"
+                    current_status["qrcode_url"] = f"http://weixin.qq.com/x/{uuid}"
                     logger.debug(f"根据UUID构建二维码URL: {current_status['qrcode_url']}")
 
         # 添加额外数据
@@ -652,7 +653,7 @@ def update_bot_status(status, details=None, extra_data=None):
                 logger.debug(f"从extra_data中获取二维码URL: {extra_data['qrcode_url']}")
 
             if "uuid" in extra_data and "qrcode_url" not in current_status:
-                current_status["qrcode_url"] = f"https://api.pwmqr.com/qrcode/create/?url=http://weixin.qq.com/x/{extra_data['uuid']}"
+                current_status["qrcode_url"] = f"http://weixin.qq.com/x/{extra_data['uuid']}"
                 logger.debug(f"根据extra_data中的UUID构建二维码URL: {current_status['qrcode_url']}")
 
         # 确保目录存在
@@ -719,8 +720,8 @@ def get_bot_status():
                     logger.debug(f"状态文件中包含UUID: {status_data['uuid']}")
                     # 如果有uuid但没有qrcode_url，尝试构建
                     if "qrcode_url" not in status_data:
-                        status_data["qrcode_url"] = f"https://api.pwmqr.com/qrcode/create/?url=http://weixin.qq.com/x/{status_data['uuid']}"
-                        logger.debug(f"根据UUID构建二维码URL: {status_data['qrcode_url']}")
+                        status_data["qrcode_url"] = f"http://weixin.qq.com/x/{status_data['uuid']}"
+                        logger.debug(f"仅提供原始登录URL: {status_data['qrcode_url']}")
 
                 return status_data
 
@@ -758,8 +759,8 @@ def get_bot_status():
                     logger.debug(f"状态文件中包含UUID: {status_data['uuid']}")
                     # 如果有uuid但没有qrcode_url，尝试构建
                     if "qrcode_url" not in status_data:
-                        status_data["qrcode_url"] = f"https://api.pwmqr.com/qrcode/create/?url=http://weixin.qq.com/x/{status_data['uuid']}"
-                        logger.debug(f"根据UUID构建二维码URL: {status_data['qrcode_url']}")
+                        status_data["qrcode_url"] = f"http://weixin.qq.com/x/{status_data['uuid']}"
+                        logger.debug(f"仅提供原始登录URL: {status_data['qrcode_url']}")
 
                 # 同时将数据复制到管理后台目录中
                 try:
@@ -2711,9 +2712,9 @@ except:
 
             return {
                 "success": False,
-                        "error": f"无法连接到服务器: {str(e)}",
-                        "message": "提交已保存到本地，将在网络恢复后自动同步"
-                    }
+                "error": f"无法连接到服务器: {str(e)}",
+                "message": "提交已保存到本地，将在网络恢复后自动同步"
+            }
 
         except Exception as e:
             logger.error(f"提交插件失败: {str(e)}")
@@ -2967,120 +2968,79 @@ except:
         asyncio.create_task(cache_plugin_market_data())
 
     # API: 获取LoginQR接口
-    @app.get('/api/bot/login_qrcode')
+    @app.get('/api/bot/login_qrcode', response_class=JSONResponse)
     async def api_login_qrcode(request: Request):
-        """获取登录二维码URL"""
+        """获取原始微信登录URL，用于生成二维码"""
         try:
-            # 读取bot状态 - 修复：get_bot_status是同步函数，不需要await
             status_data = get_bot_status()
+            logger.debug(f"API /api/bot/login_qrcode 被调用, 状态: {status_data}")
 
-            logger.debug(f"获取二维码API被调用，状态数据: {status_data}")
+            wechat_login_url = None
 
-            # 先检查状态数据中是否有二维码URL
-            if status_data and "qrcode_url" in status_data:
-                logger.info(f"从状态文件获取到二维码URL: {status_data['qrcode_url']}")
-                # 添加或更新时间戳和有效期
-                if "timestamp" not in status_data:
-                    status_data["timestamp"] = time.time()
-                if "expires_in" not in status_data:
-                    status_data["expires_in"] = 240
+            # 1. 尝试从 status_data['qrcode_url'] 获取，并验证格式
+            raw_url = status_data.get("qrcode_url")
+            if raw_url and raw_url.startswith("http://weixin.qq.com/x/"):
+                wechat_login_url = raw_url
 
-                # 当状态文件中的二维码URL是最新的
-                return {
-                    "success": True,
-                    "data": {
-                        "qrcode_url": status_data["qrcode_url"],
-                        "expires_in": status_data["expires_in"],
-                        "timestamp": status_data["timestamp"],
-                        "uuid": status_data.get("uuid", "")
-                    }
-                }
+            # 2. 如果 qrcode_url 无效，则尝试从uuid构建
+            if not wechat_login_url and "uuid" in status_data:
+                wechat_login_url = f"http://weixin.qq.com/x/{status_data['uuid']}"
+                logger.debug(f"从UUID构建了微信登录URL: {wechat_login_url}")
 
-            # 检查状态日志中是否有二维码信息
-            if status_data and "details" in status_data:
-                logger.debug(f"检查状态详情中的二维码信息: {status_data['details']}")
-                qrcode_pattern = re.compile(r'(https?://[^\s]+)')
-                match = qrcode_pattern.search(str(status_data['details']))
+            # 3. 如果还是没有，尝试从 details 中正则提取
+            if not wechat_login_url and "details" in status_data:
+                details = str(status_data['details'])
+                match = re.search(r'(https?://weixin\.qq\.com/x/[^\s]+)', details)
                 if match:
-                    qrcode_url = match.group(1)
-                    logger.info(f"从状态详情中提取二维码URL: {qrcode_url}")
-                    return {
-                        "success": True,
-                        "data": {
-                            "qrcode_url": qrcode_url,
-                            "expires_in": 240,
-                            "timestamp": time.time(),
-                            "uuid": status_data.get("uuid", "")
-                        }
-                    }
+                    wechat_login_url = match.group(1)
+                    logger.debug(f"从details中提取了微信登录URL: {wechat_login_url}")
 
-            # 如果状态文件中没有二维码URL，则尝试从日志中获取
-            logger.warning("状态文件中没有二维码URL，尝试从日志获取")
-            qrcode_data = await get_qrcode_from_logs()
-            if qrcode_data and "qrcode_url" in qrcode_data:
-                # 发现了二维码URL，更新状态
-                logger.info(f"从日志中获取到二维码URL: {qrcode_data['qrcode_url']}")
-
-                # 同时更新状态文件，确保下次能直接从状态文件获取
-                status_path = Path(__file__).parent / "bot_status.json"
-                if status_data:
-                    status_data.update(qrcode_data)
-                else:
-                    status_data = {
-                        "status": "waiting_login",
-                        "details": "等待微信扫码登录",
-                        "timestamp": time.time(),
-                        **qrcode_data
-                    }
-
-                with open(status_path, "w", encoding="utf-8") as f:
-                    json.dump(status_data, f)
-                    logger.info("已更新二维码URL到状态文件")
-
+            if wechat_login_url:
+                logger.info(f"成功获取微信登录URL: {wechat_login_url}")
                 return {
                     "success": True,
-                    "data": {
-                        "qrcode_url": qrcode_data["qrcode_url"],
-                        "expires_in": qrcode_data.get("expires_in", 240),
-                        "timestamp": qrcode_data.get("timestamp", time.time()),
-                        "uuid": qrcode_data.get("uuid", "")
-                    }
+                    "wechat_login_url": wechat_login_url
                 }
-
-            # 直接从提供的uuid构建二维码URL
-            if status_data and "uuid" in status_data:
-                logger.info(f"尝试从uuid构建二维码URL: {status_data['uuid']}")
-                qrcode_url = f"https://api.pwmqr.com/qrcode/create/?url=http://weixin.qq.com/x/{status_data['uuid']}"
-                return {
-                    "success": True,
-                    "data": {
-                        "qrcode_url": qrcode_url,
-                        "expires_in": 240,
-                        "timestamp": time.time(),
-                        "uuid": status_data["uuid"]
-                    }
-                }
-
-            # 如果都没有找到二维码URL，则返回错误
-            logger.error("无法获取二维码URL")
-            return {
-                "success": False,
-                "error": "未找到二维码URL，请在终端查看并手动输入",
-                "debug_info": status_data
-            }
+            else:
+                logger.error("无法获取微信登录URL (状态文件中无有效的qrcode_url, uuid或details)")
+                return JSONResponse(status_code=404, content={"success": False, "error": "无法获取微信登录URL，请检查机器人是否已启动并等待登录"})
         except Exception as e:
-            logger.exception(f"获取登录二维码URL失败: {e}")
-            return {
-                "success": False,
-                "error": f"获取登录二维码失败: {str(e)}"
-            }
+            logger.exception(f"获取登录二维码URL时出错: {e}")
+            return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
     # 路由别名 - 为兼容性提供相同功能的别名路由
-    @app.get('/api/login/qrcode')
+    @app.get('/api/login/qrcode', response_class=JSONResponse)
     async def api_login_qrcode_alias(request: Request):
         """获取登录二维码URL（路由别名）"""
         logger.info("通过别名路由/api/login/qrcode请求二维码")
         return await api_login_qrcode(request)
+
+    @app.get("/api/qrcode")
+    async def qrcode_proxy(request: Request):
+        url_to_encode = request.query_params.get('data')
+        if not url_to_encode:
+            return Response("Missing data parameter", status_code=400)
+
+        # 使用新的API
+        api_url = f"https://api.suyanw.cn/api/qrcode.php?text={url_to_encode}&size=180"
+
+        try:
+            # 使用httpx进行异步请求
+            async with httpx.AsyncClient() as client:
+                response = await client.get(api_url, timeout=10.0, follow_redirects=True)
+                response.raise_for_status()
+
+                # 获取原始响应头中的Content-Type
+                content_type = response.headers.get('content-type', 'image/png')
+
+                # 流式返回响应
+                return StreamingResponse(response.iter_bytes(), media_type=content_type)
+        except httpx.RequestError as e:
+            logger.error(f"代理请求QR code失败: {e}")
+            return Response(f"Failed to fetch QR code from proxy: {e}", status_code=502)
+        except Exception as e:
+            logger.exception(f"处理二维码代理时发生未知错误: {e}")
+            return Response("Internal server error", status_code=500)
 
     async def get_qrcode_from_logs():
         """从日志文件中获取二维码URL"""
@@ -3815,7 +3775,7 @@ except:
 
             # 安全检查：确保路径在项目目录内
             if (not os.path.abspath(old_full_path).startswith(os.path.abspath(root_dir)) or
-                not os.path.abspath(new_full_path).startswith(os.path.abspath(root_dir))):
+                    not os.path.abspath(new_full_path).startswith(os.path.abspath(root_dir))):
                 return JSONResponse(status_code=403, content={
                     'success': False,
                     'message': '无法操作项目目录外的文件'
@@ -4130,10 +4090,10 @@ except:
     # 添加压缩包解压API
     @app.post("/api/files/extract")
     async def api_files_extract(
-        request: Request,
-        file_path: str = Form(...),
-        destination: str = Form(...),
-        overwrite: bool = Form(False)
+            request: Request,
+            file_path: str = Form(...),
+            destination: str = Form(...),
+            overwrite: bool = Form(False)
     ):
         """解压压缩文件到指定目录"""
         try:
@@ -5552,8 +5512,8 @@ except:
                             all_contact_details[wxid] = contact_detail
                             if wxid in batch[:3]:  # 只记录前3个，避免日志过多
                                 logger.info(f"联系人[{wxid}]头像信息: " +
-                                          f"SmallHeadImgUrl={contact_detail.get('SmallHeadImgUrl', 'None')}, " +
-                                          f"BigHeadImgUrl={contact_detail.get('BigHeadImgUrl', 'None')}")
+                                            f"SmallHeadImgUrl={contact_detail.get('SmallHeadImgUrl', 'None')}, " +
+                                            f"BigHeadImgUrl={contact_detail.get('BigHeadImgUrl', 'None')}")
                     except Exception as e:
                         logger.error(f"获取联系人详情批次失败 ({i}~{i+batch_size-1}): {e}")
                         logger.error(traceback.format_exc())
@@ -7500,9 +7460,9 @@ def get_bot(wxid):
                 try:
                     # 将数据发送到远程服务器进行审核
                     async with session.post(
-                        'https://api.xybot.icu/plugin_market/submit',
-                        json=plugin_data,
-                        timeout=30
+                            'https://api.xybot.icu/plugin_market/submit',
+                            json=plugin_data,
+                            timeout=30
                     ) as response:
                         if response.status == 200:
                             resp_data = await response.json()
@@ -7702,11 +7662,11 @@ def get_bot(wxid):
                         logger.info(f"正在同步插件到服务器: {url}")
 
                         async with session.post(
-                            url,
-                            json=plugin_data,
-                            timeout=10,
-                            ssl=False,  # 明确指定不使用SSL
-                            allow_redirects=True  # 允许重定向
+                                url,
+                                json=plugin_data,
+                                timeout=10,
+                                ssl=False,  # 明确指定不使用SSL
+                                allow_redirects=True  # 允许重定向
                         ) as response:
                             if response.status == 200:
                                 # 删除本地文件
@@ -8637,21 +8597,21 @@ def get_bot(wxid):
             logger.exception(f"获取用户 {wxid} 的提醒 {id} 详情失败: {str(e)}")
             return JSONResponse(content={"success": False, "error": f"获取提醒详情失败: {str(e)}"})
 
-    #@app.post("/api/reminders/{wxid}", response_class=JSONResponse)
-    #async def api_add_reminder(wxid: str, request: Request):
-    #    """添加新提醒"""
-    #    # 检查认证状态
-    #    username = await check_auth(request)
-    #   if not username:
-    #        logger.error("添加提醒失败：未认证")
-    #        return JSONResponse(status_code=401, content={"success": False, "error": "未认证"})
+            #@app.post("/api/reminders/{wxid}", response_class=JSONResponse)
+            #async def api_add_reminder(wxid: str, request: Request):
+            #    """添加新提醒"""
+            #    # 检查认证状态
+            #    username = await check_auth(request)
+            #   if not username:
+            #        logger.error("添加提醒失败：未认证")
+            #        return JSONResponse(status_code=401, content={"success": False, "error": "未认证"})
 
-    #    try:
-    #        data = await request.json()
-    #        content = data.get("content")
-    #        reminder_type = data.get("reminder_type")
-    #        reminder_time = data.get("reminder_time")
-    #        chat_id = data.get("chat_id")
+            #    try:
+            #        data = await request.json()
+            #        content = data.get("content")
+            #        reminder_type = data.get("reminder_type")
+            #        reminder_time = data.get("reminder_time")
+            #        chat_id = data.get("chat_id")
 
             logger.info(f"用户 {username} 为 {wxid} 添加提醒: {content}, 类型: {reminder_type}, 时间: {reminder_time}, 聊天ID: {chat_id}")
 

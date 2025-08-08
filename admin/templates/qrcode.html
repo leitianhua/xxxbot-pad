@@ -467,20 +467,17 @@
 
             console.log('获取二维码响应:', data);  // 调试日志
 
-            // 修复响应数据结构判断逻辑
-            if (data.success && data.data && data.data.qrcode_url) {
-                qrcodeUrl = data.data.qrcode_url;
-                setQRCodeImage(qrcodeUrl);
+            // 调整为从新接口格式获取原始微信登录URL
+            if (data.success && data.wechat_login_url) {
+                qrcodeUrl = data.wechat_login_url; // 现在 qrcodeUrl 存储的是原始微信登录URL
+                setQRCodeImage(qrcodeUrl); // 将原始URL传递给图片设置函数
 
-                // 重置倒计时 - 使用响应中的expires_in (如果有)
-                if (data.data.expires_in) {
-                    initialCountdown = data.data.expires_in;
-                }
+                // 新的API不提供expires_in, 所以我们只重置为默认值
                 resetCountdown();
 
-                console.log('成功获取二维码URL:', qrcodeUrl);
+                console.log('成功获取微信登录URL:', qrcodeUrl);
             } else {
-                console.error('获取二维码URL失败:', data.error || '未知错误');
+                console.error('获取二维码URL失败:', data.error || '后端未返回wechat_login_url');
                 showQRCodeError('获取二维码失败，请点击刷新按钮重试');
             }
         } catch (error) {
@@ -492,12 +489,9 @@
     // 设置二维码图片
     function setQRCodeImage(url) {
         // 获取微信登录二维码
-        // 方法1：直接使用URL
-        document.getElementById('qrcode-img').src = url;
-
-        // 方法2：使用二维码生成API
-        // const qrcodeApiUrl = `/api/qrcode?data=${encodeURIComponent(url)}`;
-        // document.getElementById('qrcode-img').src = qrcodeApiUrl;
+        // url 是原始微信登录URL. 我们使用后端的代理接口来生成和获取图片
+        const qrcodeApiUrl = `/api/qrcode?data=${encodeURIComponent(url)}`;
+        document.getElementById('qrcode-img').src = qrcodeApiUrl;
 
         // 隐藏加载动画
         document.getElementById('qrcode-loading').style.display = 'none';
