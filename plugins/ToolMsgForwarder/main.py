@@ -151,16 +151,13 @@ class ToolMsgForwarder(PluginBase):
         else:
             return f"[转发自 {from_name}]:\n\n"
 
-    async def _process_forwarding(
-            self, bot, message: dict, msg_type: str, skip_rule_matching: bool = False
-    ):
+    async def _process_forwarding(self, bot, message: dict, msg_type: str):
         """
         转发消息处理逻辑
         参数:
         - bot: 机器人实例
         - message: 消息字典
         - msg_type: 消息类型（由handler传入）
-        - skip_rule_matching: 是否跳过规则匹配，直接转发给所有目标
         """
         # 如果插件被禁用，直接返回
         if not self.enable:
@@ -186,7 +183,7 @@ class ToolMsgForwarder(PluginBase):
 
         # 检查消息内容是否存在
         original_content = message.get("Content")
-        if original_content is None or (msg_type in ["image", "file", "video"] and not original_content):
+        if original_content is None or (msg_type in ["image", "file", "video", "xml"] and not original_content):
             logger.warning(f"[ToolMsgForwarder] {msg_type}消息内容为空，消息ID: {msg_id}")
             return True
 
@@ -195,136 +192,82 @@ class ToolMsgForwarder(PluginBase):
         processed_count = 0
 
         # 处理消息转发
-        if skip_rule_matching:
-            # 跳过规则匹配，直接处理所有启用的规则
-            logger.debug(f"[ToolMsgForwarder] 跳过规则匹配，直接处理消息")
+        # 使用规则匹配
+        logger.debug(f"[ToolMsgForwarder] 开始匹配{len(rules)}条规则")
 
-            # 创建一个已处理的目标集合，避免重复转发
-            processed_targets = set()
+        # 创建一个已处理的目标集合，避免重复转发
+        processed_targets = set()
 
-            for i, rule in enumerate(rules):
-                if not rule.get("enabled", False):
+        # 遍历规则进行匹配
+        for i, rule in enumerate(rules):
+            rule_id = f"规则#{i + 1}"
+
+            # 检查规则是否启用
+            if not rule.get("enabled", False):
+                logger.debug(f"[ToolMsgForwarder] {rule_id}已禁用，跳过")
+                continue
+
+            # 检查消息类型是否匹配
+            rule_msg_types = rule.get("msg_types", ["text"])
+            if msg_type not in rule_msg_types:
+                logger.debug(f"[ToolMsgForwarder] {rule_id}不处理{msg_type}类型的消息，跳过")
+                continue
+
+            # 检查来源是否匹配
+            rule_from_wxid = rule.get("from_wxid")
+            if rule_from_wxid != from_wxid:
+                logger.debug(f"[ToolMsgForwarder] {rule_id}的来源与消息来源不匹配，跳过")
+                continue
+
+            # 如果是群聊，检查发送者是否符合规则
+            if is_group:
+                specific_senders = rule.get("listen_specific_senders_in_group", [])
+                if specific_senders and sender_wxid not in specific_senders:
+                    logger.debug(f"[ToolMsgForwarder] {rule_id}指定了监听特定用户，但发送者不在列表中，跳过")
                     continue
 
-                # 获取转发目标
-                targets = rule.get("to_wxids", [])
-                if not targets:
+            # 文本消息过滤：如规则配置了 text_filter_keywords，只有匹配正则的文本才转发
+            if msg_type == "text" and rule.get("text_filter_keywords"):
+                import re
+                matched = False
+                for pattern in rule["text_filter_keywords"]:
+                    try:
+                        if re.search(pattern, original_content):
+                            matched = True
+                            break
+                    except Exception as e:
+                        logger.error(f"[ToolMsgForwarder] 文本过滤正则表达式错误: {pattern}, 错误: {e}")
+                if not matched:
+                    logger.info(f"[ToolMsgForwarder] 文本消息未匹配规则过滤正则，跳过该规则: {original_content}")
                     continue
 
-                # 文本消息过滤：如规则配置了 text_filter_keywords，只有匹配正则的文本才转发
-                if msg_type == "text" and rule.get("text_filter_keywords"):
-                    import re
-                    matched = False
-                    for pattern in rule["text_filter_keywords"]:
-                        try:
-                            if re.search(pattern, original_content):
-                                matched = True
-                                break
-                        except Exception as e:
-                            logger.error(f"[ToolMsgForwarder] 文本过滤正则表达式错误: {pattern}, 错误: {e}")
-                    if not matched:
-                        logger.info(f"[ToolMsgForwarder] 文本消息未匹配规则过滤正则，跳过该规则: {original_content}")
-                        continue
+            # 获取转发目标
+            targets = rule.get("to_wxids", [])
+            if not targets:
+                logger.debug(f"[ToolMsgForwarder] {rule_id}没有配置转发目标，跳过")
+                continue
 
-                # 过滤掉已处理过的目标
-                new_targets = [t for t in targets if t not in processed_targets]
-                if not new_targets:
-                    continue
+            # 过滤掉已处理过的目标
+            new_targets = [t for t in targets if t not in processed_targets]
+            if not new_targets:
+                logger.debug(f"[ToolMsgForwarder] {rule_id}的目标已被其他规则处理，跳过")
+                continue
 
-                # 规则匹配成功
-                matched_count += 1
-                rule_id = f"规则#{i + 1}"
-                logger.debug(f"[ToolMsgForwarder] 使用{rule_id}，转发给{len(new_targets)}个目标")
+            # 规则匹配成功
+            matched_count += 1
+            logger.debug(f"[ToolMsgForwarder] {rule_id}匹配成功，准备转发给{len(new_targets)}个目标")
 
-                # 将匹配的规则添加到消息中，用于后续获取别名
-                message["MatchedRule"] = rule
+            # 将匹配的规则添加到消息中，用于后续获取别名
+            message["MatchedRule"] = rule
 
-                # 调用 _forward_to_targets 时去掉未用参数
-                await self._forward_to_targets(
-                    bot, message, rule, new_targets, msg_type, original_content
-                )
+            # 调用 _forward_to_targets 时去掉未用参数
+            await self._forward_to_targets(
+                bot, message, rule, new_targets, msg_type, original_content
+            )
 
-                # 记录已处理的目标
-                processed_targets.update(new_targets)
-                processed_count += len(new_targets)
-
-        else:
-            # 使用规则匹配
-            logger.debug(f"[ToolMsgForwarder] 开始匹配{len(rules)}条规则")
-
-            # 创建一个已处理的目标集合，避免重复转发
-            processed_targets = set()
-
-            # 遍历规则进行匹配
-            for i, rule in enumerate(rules):
-                rule_id = f"规则#{i + 1}"
-
-                # 检查规则是否启用
-                if not rule.get("enabled", False):
-                    logger.debug(f"[ToolMsgForwarder] {rule_id}已禁用，跳过")
-                    continue
-
-                # 检查消息类型是否匹配
-                rule_msg_types = rule.get("msg_types", ["text"])
-                if msg_type not in rule_msg_types:
-                    logger.debug(f"[ToolMsgForwarder] {rule_id}不处理{msg_type}类型的消息，跳过")
-                    continue
-
-                # 检查来源是否匹配
-                rule_from_wxid = rule.get("from_wxid")
-                if rule_from_wxid != from_wxid:
-                    logger.debug(f"[ToolMsgForwarder] {rule_id}的来源与消息来源不匹配，跳过")
-                    continue
-
-                # 如果是群聊，检查发送者是否符合规则
-                if is_group:
-                    specific_senders = rule.get("listen_specific_senders_in_group", [])
-                    if specific_senders and sender_wxid not in specific_senders:
-                        logger.debug(f"[ToolMsgForwarder] {rule_id}指定了监听特定用户，但发送者不在列表中，跳过")
-                        continue
-
-                # 文本消息过滤：如规则配置了 text_filter_keywords，只有匹配正则的文本才转发
-                if msg_type == "text" and rule.get("text_filter_keywords"):
-                    import re
-                    matched = False
-                    for pattern in rule["text_filter_keywords"]:
-                        try:
-                            if re.search(pattern, original_content):
-                                matched = True
-                                break
-                        except Exception as e:
-                            logger.error(f"[ToolMsgForwarder] 文本过滤正则表达式错误: {pattern}, 错误: {e}")
-                    if not matched:
-                        logger.info(f"[ToolMsgForwarder] 文本消息未匹配规则过滤正则，跳过该规则: {original_content}")
-                        continue
-
-                # 获取转发目标
-                targets = rule.get("to_wxids", [])
-                if not targets:
-                    logger.debug(f"[ToolMsgForwarder] {rule_id}没有配置转发目标，跳过")
-                    continue
-
-                # 过滤掉已处理过的目标
-                new_targets = [t for t in targets if t not in processed_targets]
-                if not new_targets:
-                    logger.debug(f"[ToolMsgForwarder] {rule_id}的目标已被其他规则处理，跳过")
-                    continue
-
-                # 规则匹配成功
-                matched_count += 1
-                logger.debug(f"[ToolMsgForwarder] {rule_id}匹配成功，准备转发给{len(new_targets)}个目标")
-
-                # 将匹配的规则添加到消息中，用于后续获取别名
-                message["MatchedRule"] = rule
-
-                # 调用 _forward_to_targets 时去掉未用参数
-                await self._forward_to_targets(
-                    bot, message, rule, new_targets, msg_type, original_content
-                )
-
-                # 记录已处理的目标
-                processed_targets.update(new_targets)
-                processed_count += len(new_targets)
+            # 记录已处理的目标
+            processed_targets.update(new_targets)
+            processed_count += len(new_targets)
 
         logger.debug(
             f"[ToolMsgForwarder] {msg_type}消息处理完成: "
@@ -335,13 +278,14 @@ class ToolMsgForwarder(PluginBase):
     async def _forward_to_targets(
             self, bot, message, rule, targets, msg_type, original_content
     ):
-        # prepend_info = rule.get("prepend_info", True)
-        # prefix = ""  # 不再需要前缀
-        # if prepend_info and msg_type != "xml" and not message.get("DisableMediaPrefix", False):
-        #     prefix = self._get_forward_prefix(message)
         for target_wxid in targets:
             try:
                 content_to_send = original_content
+                if msg_type in "text":
+                    content_to_send = message["Content"]
+                elif msg_type in "xml":
+                    content_to_send = message["xml_url"]
+
                 # 只对文本和xml做转链
                 if msg_type in ("text", "xml") and self.rebate_config.get("enable", False):
                     enable_rebate = rule.get("enable_rebate", True)
@@ -364,7 +308,7 @@ class ToolMsgForwarder(PluginBase):
                 if msg_type == "text":
                     await bot.send_text_message(target_wxid, content_to_send)
                 elif msg_type == "xml":
-                    await bot.send_text_message(target_wxid, content_to_send)
+                    await bot.send_link_message(target_wxid, content_to_send,message["xml_title"],message["xml_des"])
                 elif msg_type == "image":
                     await bot.send_image_message(target_wxid, content_to_send)
                 elif msg_type == "file":
@@ -413,20 +357,16 @@ class ToolMsgForwarder(PluginBase):
                         # 如果启用了转链且匹配到链接
                         if has_match and self.rebate_config.get("enable", False):
                             logger.info(f"[ToolMsgForwarder] 检测到{match_type}，尝试转链")
-                            converted_url = self._convert_link(url)
+                            # converted_url = self._convert_link(url)
+                            converted_url = url
                             if converted_url and converted_url != url:
                                 logger.info(f"[ToolMsgForwarder] 转链成功")
 
-                        # 从描述中提取产品名称 - 针对特定格式
-                        product_name = self._extract_product_name(description, title)
+                        message["xml_title"] = title
+                        message["xml_des"] = description
+                        message["xml_url"] = converted_url
+                        return await self._process_forwarding(bot, message, msg_type="xml")
 
-                        # 创建指定格式的输出
-                        extracted_content = f"{product_name}\n{converted_url}"
-
-                        # 如果转链后内容和原始url不同，说明转链成功，发文本
-                        if converted_url and converted_url != url:
-                            message["Content"] = extracted_content
-                            return await self._process_forwarding(bot, message, msg_type="text")
         except Exception as e:
             logger.error(f"[ToolMsgForwarder] 提取XML内容时出错: {e}")
         # 转链失败或异常，原样xml转发
@@ -501,23 +441,4 @@ class ToolMsgForwarder(PluginBase):
             logger.error(f"[ToolMsgForwarder] 批量转链时发生错误: {e}")
             return text
 
-    def _extract_product_name(self, description, default_title):
-        """从描述中提取产品名称"""
-        if not description:
-            return default_title
 
-        # 尝试提取"品名:xxx"格式
-        if "品名:" in description:
-            name_parts = description.split("品名:", 1)
-            if len(name_parts) > 1:
-                product_parts = name_parts[1].split("物品规格:", 1)
-                if len(product_parts) > 1:
-                    return product_parts[0].strip()
-                else:
-                    # 如果没有"物品规格:"，则尝试提取到下一个换行符
-                    product_parts = name_parts[1].split("\n", 1)
-                    if len(product_parts) > 0:
-                        return product_parts[0].strip()
-
-        # 如果没有从描述中提取到产品名称，则使用标题
-        return default_title

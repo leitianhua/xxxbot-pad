@@ -1,5 +1,5 @@
 [Protocol]
-version = "Mac"            # 协议版本，可选值: "849", "855", "ipad" 或 "Mac"
+version = "Mac"
 
 [Framework]
 type = "default"  # 可选值: "default", "dual","wechat" (dual模式先启动原始框架，再启动DOW,wechat不启动内部协议)
@@ -88,11 +88,13 @@ disabled-plugins = [
     "JDRebate",
     "FunMusic",
     "ToolParser",
-] # 禁用的插件列表，不需要的插件名称填在这里
-timezone = "Asia/Shanghai"             # 时区设置，中国用户使用 Asia/Shanghai
-
-# 实验性功能，如果main_config.toml配置改动，或者plugins文件夹有改动，自动重启。可以在开发时使用，不建议在生产环境使用。
-auto-restart = false                 # 仅建议在开发时启用，生产环境保持false
+    "AutoReloginPlugin",
+    "ToolGroupForbidden",
+    "ToolLinkRebate",
+]
+timezone = "Asia/Shanghai"
+auto-restart = false
+files-cleanup-days = 7
 
 # 图片文件自动清理设置
 files-cleanup-days = 7               # 图片文件保存天数，超过此天数的图片将被自动清理，设为0表示禁用自动清理

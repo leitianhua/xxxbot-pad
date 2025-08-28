@@ -19,7 +19,6 @@ name = "转发合并"
 from_wxid = "47410316718@chatroom"          # 转发开始
 # 不设置listen_specific_senders_in_group则监听群内所有人
 to_wxids = ["45269739397@chatroom"]          # 转发结束
-prepend_info = false
 msg_types = ["text", "image", "video","file"]
 enable_rebate = false                       # 启用转链功能（对文本消息生效）
 
@@ -33,7 +32,6 @@ listen_specific_senders_in_group = [
 ]  
 text_filter_keywords = ["^[0-9A-Z]{6}$"]
 to_wxids = ["43353238030@chatroom"]          # 转发目标
-prepend_info = false
 msg_types = ["text"]  # 处理所有类型消息
 enable_rebate = false                      # 禁用转链功能
 
@@ -47,6 +45,22 @@ listen_specific_senders_in_group = [
 ]
 text_filter_keywords = ["^[0-9A-Z]{6}$"]
 to_wxids = ["43353238030@chatroom"]          # 转发目标
-prepend_info = false
 msg_types = ["text"]  # 处理所有类型消息
 enable_rebate = false                      # 禁用转链功能
+
+
+
+# 相纸监听
+[[ToolMsgForwarder.rules]]
+enabled = true
+name = "相纸监听 小梨S65"
+from_wxid = "34789752653@chatroom"  # 小梨S65
+#from_wxid = "45269739397@chatroom" # 转发结束群
+to_wxids = [
+    "47322591751@chatroom" # 卷卷
+]
+xml_filter_title = ["^[0-9A-Z]{6}$"]
+xml_filter_des = ["^[0-9A-Z]{6}$"]
+xml_filter_url = ["^[0-9A-Z]{6}$"]
+msg_types = ["xml"]  # 处理所有类型消息
+enable_rebate = true

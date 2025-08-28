@@ -410,9 +410,16 @@ class MessageMixin(WechatAPIClientBase):
             raise BanProtection("风控保护: 新设备登录后4小时内请挂机")
 
         async with aiohttp.ClientSession() as session:
-            json_param = {"Wxid": self.wxid, "ToWxid": wxid, "Url": url, "Title": title, "Desc": description,
-                          "ThumbUrl": thumb_url}
-            response = await session.post(f'http://{self.ip}:{self.port}/api/Msg/ShareLink', json=json_param)
+            # json_param = {"Wxid": self.wxid, "ToWxid": wxid, "Url": url, "Title": title, "Desc": description,"ThumbUrl": thumb_url}
+            simple_xml = f"""<appmsg><title>{title}</title><des>{description}</des><type>5</type><url>{url}</url><thumburl></thumburl></appmsg>"""
+
+            data = {
+                "ToWxid": wxid,
+                "Type": 5,
+                "Wxid": self.wxid,
+                "Xml": simple_xml
+            }
+            response = await session.post(f'http://{self.ip}:{self.port}/api/Msg/SendApp', json=data)
             json_resp = await response.json()
 
             if json_resp.get("Success"):
