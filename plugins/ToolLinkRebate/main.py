@@ -81,7 +81,7 @@ class ToolLinkRebate(PluginBase):
 
             # 编译正则表达式
             self.link_patterns = {
-                "taobao": re.compile(r"https?://(s\.click\.taobao\.com|m\.tb\.cn)/[^\s<]*"),  # 淘宝链接
+                "taobao": re.compile(r"https?://(s\.click\.taobao\.com|m\.tb\.cn|e\.tb\.cn)/[^\s<]*"),  # 淘宝链接
                 "jd": re.compile(r"https?://u\.jd\.com/[A-Za-z0-9]+"),  # 京东链接
                 "tkl1": re.compile(r"[¥￥$/].*?[¥￥$/]"),  # 淘口令模式1
                 # "tkl2": re.compile(r"([¥￥$].*?[/\\])"),  # 淘口令模式2

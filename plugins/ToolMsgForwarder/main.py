@@ -31,7 +31,6 @@ class ToolMsgForwarder(PluginBase):
         # 转链功能配置
         self.rebate_config = {
             "enable": True,  # 是否启用转链功能
-            "prepend_converted_tag": True,  # 是否在转链消息前添加[已转链]标签
             "appkey": "",  # 折淘客的对接秘钥appkey
             "sid": "",  # 添加sid参数
             "union_id": "",  # 京东联盟ID
@@ -240,6 +239,57 @@ class ToolMsgForwarder(PluginBase):
                 if not matched:
                     logger.info(f"[ToolMsgForwarder] 文本消息未匹配规则过滤正则，跳过该规则: {original_content}")
                     continue
+            
+            # XML消息过滤：如规则配置了xml_filter_title、xml_filter_des或xml_filter_url，只有匹配正则的XML才转发
+            if msg_type == "xml":
+                import re
+                matched = True  # 默认为匹配，如果没有任何过滤条件，则全部转发
+                
+                # 检查标题过滤
+                if rule.get("xml_filter_title") and message.get("xml_title"):
+                    title_matched = False
+                    for pattern in rule["xml_filter_title"]:
+                        try:
+                            if re.search(pattern, message["xml_title"]):
+                                title_matched = True
+                                break
+                        except Exception as e:
+                            logger.error(f"[ToolMsgForwarder] XML标题过滤正则表达式错误: {pattern}, 错误: {e}")
+                    if not title_matched:
+                        logger.info(f"[ToolMsgForwarder] XML消息标题未匹配规则过滤正则，跳过该规则: {message['xml_title']}")
+                        matched = False
+                
+                # 检查描述过滤
+                if matched and rule.get("xml_filter_des") and message.get("xml_des"):
+                    des_matched = False
+                    for pattern in rule["xml_filter_des"]:
+                        try:
+                            if re.search(pattern, message["xml_des"]):
+                                des_matched = True
+                                break
+                        except Exception as e:
+                            logger.error(f"[ToolMsgForwarder] XML描述过滤正则表达式错误: {pattern}, 错误: {e}")
+                    if not des_matched:
+                        logger.info(f"[ToolMsgForwarder] XML消息描述未匹配规则过滤正则，跳过该规则: {message['xml_des']}")
+                        matched = False
+                
+                # 检查URL过滤
+                if matched and rule.get("xml_filter_url") and message.get("xml_url"):
+                    url_matched = False
+                    for pattern in rule["xml_filter_url"]:
+                        try:
+                            if re.search(pattern, message["xml_url"]):
+                                url_matched = True
+                                break
+                        except Exception as e:
+                            logger.error(f"[ToolMsgForwarder] XML URL过滤正则表达式错误: {pattern}, 错误: {e}")
+                    if not url_matched:
+                        logger.info(f"[ToolMsgForwarder] XML消息URL未匹配规则过滤正则，跳过该规则: {message['xml_url']}")
+                        matched = False
+                
+                # 如果有任何一项过滤条件未匹配，则跳过该规则
+                if not matched:
+                    continue
 
             # 获取转发目标
             targets = rule.get("to_wxids", [])
@@ -260,9 +310,9 @@ class ToolMsgForwarder(PluginBase):
             # 将匹配的规则添加到消息中，用于后续获取别名
             message["MatchedRule"] = rule
 
-            # 调用 _forward_to_targets 时去掉未用参数
+            # 调用 _forward_to_targets
             await self._forward_to_targets(
-                bot, message, rule, new_targets, msg_type, original_content
+                bot, message, rule, new_targets, msg_type
             )
 
             # 记录已处理的目标
@@ -276,15 +326,18 @@ class ToolMsgForwarder(PluginBase):
         return True
 
     async def _forward_to_targets(
-            self, bot, message, rule, targets, msg_type, original_content
+            self, bot, message, rule, targets, msg_type
     ):
         for target_wxid in targets:
             try:
-                content_to_send = original_content
-                if msg_type in "text":
+                # 直接从message中获取内容
+                if msg_type == "text":
                     content_to_send = message["Content"]
-                elif msg_type in "xml":
+                elif msg_type == "xml":
                     content_to_send = message["xml_url"]
+                else:
+                    # 对于其他类型（image, file, video），直接使用Content
+                    content_to_send = message.get("Content", "")
 
                 # 只对文本和xml做转链
                 if msg_type in ("text", "xml") and self.rebate_config.get("enable", False):
@@ -296,9 +349,6 @@ class ToolMsgForwarder(PluginBase):
                                 logger.info(f"[ToolMsgForwarder] 检测到{match_type}，开始转链")
                                 converted_content = self._convert_link(content_to_send)
                                 if converted_content and converted_content != content_to_send:
-                                    if self.rebate_config.get("prepend_converted_tag", True):
-                                        if not converted_content.startswith("[已转链]"):
-                                            converted_content = "[已转链] " + converted_content
                                     content_to_send = converted_content
                                     logger.info(f"[ToolMsgForwarder] 转链成功")
                         except Exception as e:
@@ -395,7 +445,7 @@ class ToolMsgForwarder(PluginBase):
             (re.compile(r"([¥￥$].*?[/\\])"), "淘口令模式2"),  # 以货币符号开头，以斜杠结尾的淘口令
             (re.compile(r"(\(\(.*?://)"), "淘口令模式3"),  # 以双括号开头，包含://的淘口令
             (re.compile(r"\(([a-zA-Z0-9]{10,})\)"), "淘口令模式4"),  # 括号内的10位以上字母数字组合
-            (re.compile(r"https?://(s\.click\.taobao\.com|m\.tb\.cn)/[^\s<]*"), "淘宝链接"),  # 淘宝短链接
+            (re.compile(r"https?://(s\.click\.taobao\.com|m\.tb\.cn|e\.tb\.cn)/[^\s<]*"), "淘宝链接"),  # 淘宝短链接
             (re.compile(r"https?://u\.jd\.com/[A-Za-z0-9]+"), "京东链接"),  # 京东短链接
         ]
 

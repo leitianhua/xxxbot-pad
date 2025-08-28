@@ -6,7 +6,6 @@ priority = 99     # 插件优先级，值越小优先级越高
 # ================ 转链功能配置 ================
 [ToolMsgForwarder.rebate]
 enable = true     # 是否启用转链功能
-prepend_converted_tag = true  # 是否在转链消息中添加[已转链]标签
 appkey = "2a77607fa088417a8fcb257d1fbb3088"  # 折淘客的对接秘钥appkey
 sid = "185073"    # 折淘客的sid参数
 union_id = "2036757202"  # 京东联盟ID
@@ -57,10 +56,10 @@ name = "相纸监听 小梨S65"
 from_wxid = "34789752653@chatroom"  # 小梨S65
 #from_wxid = "45269739397@chatroom" # 转发结束群
 to_wxids = [
-    "47322591751@chatroom" # 卷卷
+    "47322591751@chatroom" # 卷卷群
 ]
-xml_filter_title = ["^[0-9A-Z]{6}$"]
-xml_filter_des = ["^[0-9A-Z]{6}$"]
-xml_filter_url = ["^[0-9A-Z]{6}$"]
+#xml_filter_title = ["^[0-9A-Z]{6}$"]
+#xml_filter_des = ["^[0-9A-Z]{6}$"]
+#xml_filter_url = ["^[0-9A-Z]{6}$"]
 msg_types = ["xml"]  # 处理所有类型消息
 enable_rebate = true
