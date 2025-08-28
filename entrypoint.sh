@@ -43,7 +43,7 @@ sleep 3
 
 # 读取协议版本配置
 echo "读取协议版本配置..."
-PROTOCOL_VERSION="849"  # 默认使用849协议
+PROTOCOL_VERSION="ipad"  # 默认使用iPad协议
 FRAMEWORK_TYPE="default"  # 默认使用默认框架
 
 # 检查配置文件是否存在
@@ -83,11 +83,7 @@ echo "清理后的协议版本: '$CLEAN_VERSION'"
 
 # 根据协议版本选择不同的服务路径
 # 使用更严格的比较方式
-if [[ "$CLEAN_VERSION" == "855" ]]; then
-    # 855版本使用pad2目录
-    PAD_SERVICE_PATH="/app/849/pad2/linuxService"
-    echo "使用855协议服务路径: $PAD_SERVICE_PATH"
-elif [[ "$CLEAN_VERSION" == "ipad" ]]; then
+if [[ "$CLEAN_VERSION" == "ipad" ]]; then
     # ipad版本使用pad3目录
     PAD_SERVICE_PATH="/app/849/pad3/linuxService"
     echo "使用iPad协议服务路径: $PAD_SERVICE_PATH"
@@ -96,9 +92,9 @@ elif [[ "$CLEAN_VERSION" == "Mac" ]]; then
     PAD_SERVICE_PATH="/app/849/pad3/linuxService"
     echo "使用Mac协议服务路径: $PAD_SERVICE_PATH"
 else
-    # 默认使用849协议路径
-    PAD_SERVICE_PATH="/app/849/pad/linuxService"
-    echo "使用849协议服务路径: $PAD_SERVICE_PATH"
+    # 默认使用iPad协议路径
+    PAD_SERVICE_PATH="/app/849/pad3/linuxService"
+    echo "使用iPad协议服务路径: $PAD_SERVICE_PATH"
 fi
 
 # 读取框架类型
@@ -108,7 +104,7 @@ if [ -f "/app/main_config.toml" ]; then
 fi
 
 if [[ "$FRAMEWORK_TYPE" == "wechat" ]]; then
-    echo "仅作为API客户端（Client2），不启动849协议服务"
+    echo "仅作为API客户端（Client2），不启动iPad协议服务"
 else
     # 启动pad服务（协议服务）
     echo "启动pad服务（协议服务）..."
@@ -209,7 +205,7 @@ elif [[ "$FRAMEWORK_TYPE" == "dual" ]]; then
     sleep 3
     echo "启动消息回调守护进程..."
     cd $ORIGINAL_FRAMEWORK_PATH
-    python /app/wx849_callback_daemon.py &
+    python /app/wxipad_callback_daemon.py &
     CALLBACK_PID=$!
     echo "消息回调守护进程已启动，进程ID: $CALLBACK_PID"
     

@@ -144,38 +144,11 @@ async def bot_core():
     #              redis_db=api_config.get("redis-db", 0))
 
     # 读取协议版本设置
-    protocol_version = config.get("Protocol", {}).get("version", "849")
+    protocol_version = config.get("Protocol", {}).get("version", "ipad")
     logger.info(f"使用协议版本: {protocol_version}")
 
-    # 实例化WechatAPI客户端
-    if protocol_version == "855":
-        # 855版本使用Client2
-        try:
-            # 尝试导入Client2
-            import sys
-            import importlib.util
-            client2_path = Path(__file__).resolve().parent / "WechatAPI" / "Client2"
-            if str(client2_path) not in sys.path:
-                sys.path.append(str(client2_path))
-
-            # 检查Client2是否存在
-            if (client2_path / "__init__.py").exists():
-                logger.info("WechatAPI Client2目录存在，使用855协议客户端")
-                # 尝试导入客户端2
-                # 使用直接导入的方式
-                from WechatAPI.Client2 import WechatAPIClient as WechatAPIClient2
-
-                # 使用Client2
-                bot = WechatAPIClient2(api_host, api_config.get("port", 9000))
-                logger.success("成功加载855协议客户端")
-            else:
-                logger.warning("WechatAPI Client2目录不存在，回退使用默认客户端")
-                bot = WechatAPI.WechatAPIClient(api_host, api_config.get("port", 9000))
-        except Exception as e:
-            logger.error(f"加载855协议客户端失败: {e}")
-            logger.warning("回退使用默认客户端")
-            bot = WechatAPI.WechatAPIClient(api_host, api_config.get("port", 9000))
-    elif protocol_version == "ipad" or protocol_version == "Mac":
+    # 实例化WechatAPI客户端 - 只支持iPad和Mac协议
+    if protocol_version == "ipad" or protocol_version == "Mac":
         # iPad/Mac版本使用Client3
         try:
             # 尝试导入Client3
@@ -203,9 +176,33 @@ async def bot_core():
             logger.warning("回退使用默认客户端")
             bot = WechatAPI.WechatAPIClient(api_host, api_config.get("port", 9000))
     else:
-        # 849版本使用默认Client
-        bot = WechatAPI.WechatAPIClient(api_host, api_config.get("port", 9000))
-        logger.info("使用849协议客户端")
+        # 不支持的协议版本，默认使用iPad协议
+        logger.warning(f"不支持的协议版本: {protocol_version}，默认使用iPad协议")
+        protocol_version = "ipad"
+        try:
+            # 尝试导入Client3
+            import sys
+            import importlib.util
+            client3_path = Path(__file__).resolve().parent / "WechatAPI" / "Client3"
+            if str(client3_path) not in sys.path:
+                sys.path.append(str(client3_path))
+
+            # 检查Client3是否存在
+            if (client3_path / "__init__.py").exists():
+                logger.info("WechatAPI Client3目录存在，使用iPad协议客户端")
+                # 尝试导入客户端3
+                from WechatAPI.Client3 import WechatAPIClient as WechatAPIClient3
+
+                # 使用Client3
+                bot = WechatAPIClient3(api_host, api_config.get("port", 9000))
+                logger.success("成功加载iPad协议客户端")
+            else:
+                logger.warning("WechatAPI Client3目录不存在，回退使用默认客户端")
+                bot = WechatAPI.WechatAPIClient(api_host, api_config.get("port", 9000))
+        except Exception as e:
+            logger.error(f"加载iPad协议客户端失败: {e}")
+            logger.warning("回退使用默认客户端")
+            bot = WechatAPI.WechatAPIClient(api_host, api_config.get("port", 9000))
 
     # 设置客户端属性
     bot.ignore_protect = config.get("XYBot", {}).get("ignore-protection", False)
@@ -276,13 +273,8 @@ async def bot_core():
                             # 直接使用 aiohttp 调用 API，而不是使用 awaken_login 方法
                             # 这样我们可以更好地控制错误处理
                             async with aiohttp.ClientSession() as session:
-                                # 根据协议版本选择不同的 API 路径
-                                if protocol_version == "855":
-                                    api_base = "/api"
-                                elif protocol_version == "ipad" or protocol_version == "Mac":
-                                    api_base = "/api"
-                                else:
-                                    api_base = "/VXAPI"
+                                # iPad和Mac协议都使用 /api 路径
+                                api_base = "/api"
                                 api_url = f'http://{api_host}:{api_config.get("port", 9000)}{api_base}/Login/Awaken'
 
                                 # 准备请求参数

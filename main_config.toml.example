@@ -1,6 +1,6 @@
 # 协议版本选择
 [Protocol]
-version = "849"            # 协议版本，可选值: "849", "855" 或 "ipad"，暂时别用855
+version = "ipad"            # 协议版本，可选值: "ipad" 或 "Mac"
 
 [Framework]
 type = "default"  # 可选值: "default", "dual" (dual模式先启动原始框架，再启动DOW)
@@ -109,7 +109,7 @@ restartContent = "系统已于 <span style=\"color:#1e90ff;font-weight:bold;\">{
 # 消息回调设置
 [Callback]
 enabled = true                      # 是否启用回调功能
-path = "python wx849_callback_sender.py"  # 回调脚本路径，根据Python安装位置可能需要调整
+path = "python callback_sender.py"  # 回调脚本路径，根据Python安装位置可能需要调整
 delay = 0                           # 回调延迟（毫秒），通常设为0
 mode = "all"                        # 回调模式：all=所有消息，filter=仅指定类型
 

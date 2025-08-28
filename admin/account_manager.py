@@ -750,77 +750,16 @@ async def get_user_profile(wxid: str) -> dict:
         # 调用API获取用户信息
         api_port = 9011  # 默认PAD API端口
 
-        # 准备两种API路径
-        # /VXAPI 路径 (849协议)
-        url_849 = f'http://127.0.0.1:{api_port}/VXAPI/User/GetContractProfile?wxid={wxid}'
-        # /api 路径 (855协议)
-        url_855 = f'http://127.0.0.1:{api_port}/api/User/GetContractProfile?wxid={wxid}'
-
-        # 首先尝试使用 /VXAPI 路径 (849协议)
-        url = url_849
-        logger.info(f"从API获取用户信息(849协议): {url}")
+        # iPad/Mac协议使用 /api 路径
+        url = f'http://127.0.0.1:{api_port}/api/User/GetContractProfile?wxid={wxid}'
+        logger.info(f"从API获取用户信息(iPad/Mac协议): {url}")
 
         async with aiohttp.ClientSession() as session:
-            # 尝试使用 /VXAPI 路径
             try:
                 async with session.post(url) as response:
                     if response.status == 200:
                         json_resp = await response.json()
-                        logger.info(f"获取到用户信息响应(849协议): {json_resp.get('Success')}")
-
-                        if json_resp.get("Success") and json_resp.get("Data"):
-                            data = json_resp.get("Data")
-                            result = {}
-
-                            # 提取昵称
-                            if data.get("userInfo") and data["userInfo"].get("NickName") and data["userInfo"]["NickName"].get("string"):
-                                result["nickname"] = data["userInfo"]["NickName"]["string"]
-                                logger.info(f"成功获取昵称: {result['nickname']}")
-
-                            # 提取微信号
-                            if data.get("userInfo") and data["userInfo"].get("Alias"):
-                                result["alias"] = data["userInfo"]["Alias"]
-                                logger.info(f"成功获取微信号: {result['alias']}")
-
-                            # 提取头像 URL
-                            if data.get("userInfoExt") and data["userInfoExt"].get("BigHeadImgUrl"):
-                                head_img_url = data["userInfoExt"]["BigHeadImgUrl"]
-                                logger.info(f"成功获取头像 URL: {head_img_url}")
-
-                                # 下载头像
-                                avatar_dir = Path("resource") / "avatars"
-                                avatar_dir.mkdir(parents=True, exist_ok=True)
-                                avatar_file = avatar_dir / f"{wxid}.jpg"
-
-                                async with session.get(head_img_url) as img_response:
-                                    if img_response.status == 200:
-                                        image_data = await img_response.read()
-                                        # 保存头像文件
-                                        with open(avatar_file, "wb") as f:
-                                            f.write(image_data)
-                                        logger.info(f"成功下载并保存头像: {wxid}")
-                                        result["avatar_downloaded"] = True
-                                    else:
-                                        logger.warning(f"下载头像失败，状态码: {img_response.status}")
-
-                            return result
-                        else:
-                            # 如果 /VXAPI 路径失败，尝试使用 /api 路径
-                            logger.warning(f"使用849协议路径获取用户信息失败，尝试855协议路径")
-                            raise Exception("使用849协议路径获取用户信息失败")
-                    else:
-                        # 如果 /VXAPI 路径失败，尝试使用 /api 路径
-                        logger.warning(f"使用849协议路径获取用户信息失败，状态码: {response.status}，尝试855协议路径")
-                        raise Exception(f"使用849协议路径获取用户信息失败，状态码: {response.status}")
-            except Exception as e:
-                # 尝试使用 /api 路径
-                url = f'http://127.0.0.1:{api_port}/api/User/GetContractProfile?wxid={wxid}'
-                logger.info(f"从API获取用户信息(855协议): {url}")
-
-                async with session.post(url) as response:
-                    if response.status == 200:
-                        json_resp = await response.json()
-                        logger.info(f"获取到用户信息响应(855协议): {json_resp.get('Success')}")
+                        logger.info(f"获取到用户信息响应(iPad/Mac协议): {json_resp.get('Success')}")
 
                         if json_resp.get("Success") and json_resp.get("Data"):
                             data = json_resp.get("Data")
@@ -862,6 +801,8 @@ async def get_user_profile(wxid: str) -> dict:
                             logger.warning(f"获取用户信息失败: {json_resp}")
                     else:
                         logger.warning(f"请求失败，状态码: {response.status}")
+            except Exception as e:
+                logger.error(f"从API获取用户信息失败: {e}")
     except Exception as e:
         logger.error(f"从API获取用户信息失败: {e}")
 
@@ -902,23 +843,16 @@ async def download_avatar(wxid: str) -> bool:
             # 直接调用API获取头像
             api_port = 9011  # 默认PAD API端口
 
-            # 尝试使用两种API路径
-            # 首先尝试 /VXAPI 路径 (849协议)
-            url_849 = f'http://127.0.0.1:{api_port}/VXAPI/User/GetContractProfile?wxid={wxid}'
-            # 然后尝试 /api 路径 (855协议)
-            url_855 = f'http://127.0.0.1:{api_port}/api/User/GetContractProfile?wxid={wxid}'
-
-            # 首先尝试849协议路径
-            url = url_849
-            logger.info(f"尝试直接调用API获取头像(849协议): {url}")
+            # iPad/Mac协议使用 /api 路径
+            url = f'http://127.0.0.1:{api_port}/api/User/GetContractProfile?wxid={wxid}'
+            logger.info(f"尝试直接调用API获取头像(iPad/Mac协议): {url}")
 
             async with aiohttp.ClientSession() as session:
-                # 尝试使用849协议路径
                 try:
                     async with session.post(url) as response:
                         if response.status == 200:
                             json_resp = await response.json()
-                            logger.info(f"获取到用户信息响应(849协议): {json_resp.get('Success')}")
+                            logger.info(f"获取到用户信息响应(iPad/Mac协议): {json_resp.get('Success')}")
 
                             if json_resp.get("Success") and json_resp.get("Data"):
                                 data = json_resp.get("Data")
@@ -940,48 +874,11 @@ async def download_avatar(wxid: str) -> bool:
                                             logger.warning(f"下载头像失败，状态码: {img_response.status}")
                                 else:
                                     logger.warning(f"响应中没有头像 URL")
-                            else:
-                                # 如果849协议路径失败，尝试855协议路径
-                                logger.warning(f"使用849协议路径获取用户信息失败，尝试855协议路径")
-                                raise Exception("使用849协议路径获取用户信息失败")
-                        else:
-                            # 如果849协议路径失败，尝试855协议路径
-                            logger.warning(f"使用849协议路径获取用户信息失败，状态码: {response.status}，尝试855协议路径")
-                            raise Exception(f"使用849协议路径获取用户信息失败，状态码: {response.status}")
-                except Exception as e:
-                    # 尝试使用855协议路径
-                    url = url_855
-                    logger.info(f"尝试直接调用API获取头像(855协议): {url}")
-
-                    async with session.post(url) as response:
-                        if response.status == 200:
-                            json_resp = await response.json()
-                            logger.info(f"获取到用户信息响应(855协议): {json_resp.get('Success')}")
-
-                            if json_resp.get("Success") and json_resp.get("Data"):
-                                data = json_resp.get("Data")
-
-                                if data.get("userInfoExt") and data["userInfoExt"].get("BigHeadImgUrl"):
-                                    head_img_url = data["userInfoExt"]["BigHeadImgUrl"]
-                                    logger.info(f"成功获取头像 URL: {head_img_url}")
-
-                                    # 下载头像
-                                    async with session.get(head_img_url) as img_response:
-                                        if img_response.status == 200:
-                                            image_data = await img_response.read()
-                                            # 保存头像文件
-                                            with open(avatar_file, "wb") as f:
-                                                f.write(image_data)
-                                            logger.info(f"成功下载并保存头像: {wxid}")
-                                            return True
-                                        else:
-                                            logger.warning(f"下载头像失败，状态码: {img_response.status}")
-                                else:
-                                    logger.warning(f"响应中没有头像 URL")
-                            else:
-                                logger.warning(f"获取用户信息失败: {json_resp}")
                         else:
                             logger.warning(f"请求失败，状态码: {response.status}")
+                            raise Exception(f"使用iPad/Mac协议路径获取用户信息失败，状态码: {response.status}")
+                except Exception as e:
+                      logger.error(f"直接调用API获取头像失败: {e}")
         except Exception as e:
             logger.error(f"直接调用API获取头像失败: {e}")
 

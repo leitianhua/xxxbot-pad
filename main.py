@@ -117,7 +117,7 @@ async def main():
         logger.success("读取主设置成功")
 
         # 输出协议版本信息用于调试
-        protocol_version = config.get("Protocol", {}).get("version", "849")
+        protocol_version = config.get("Protocol", {}).get("version", "ipad")
         logger.info(f"当前配置的协议版本: {protocol_version}")
 
         # 设置日志级别
