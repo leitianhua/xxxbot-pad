@@ -53,13 +53,14 @@ enable_rebate = false                      # 禁用转链功能
 [[ToolMsgForwarder.rules]]
 enabled = true
 name = "相纸监听 小梨S65"
-from_wxid = "34789752653@chatroom"  # 小梨S65
-#from_wxid = "45269739397@chatroom" # 转发结束群
+#from_wxid = "34789752653@chatroom"  # 小梨S65
+from_wxid = "45269739397@chatroom" # 转发结束群
 to_wxids = [
-    "47322591751@chatroom" # 卷卷群
+#    "47322591751@chatroom" # 卷卷群
+    "45269739397@chatroom" # 转发结束群
 ]
-#xml_filter_title = ["^[0-9A-Z]{6}$"]
+xml_filter_title = [".*货物.*"]
 #xml_filter_des = ["^[0-9A-Z]{6}$"]
-#xml_filter_url = ["^[0-9A-Z]{6}$"]
+xml_filter_url = [".*jd.*"]
 msg_types = ["xml"]  # 处理所有类型消息
 enable_rebate = true

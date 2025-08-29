@@ -94,10 +94,9 @@ disabled-plugins = [
 ]
 timezone = "Asia/Shanghai"
 auto-restart = false
-files-cleanup-days = 7
 
 # 图片文件自动清理设置
-files-cleanup-days = 7               # 图片文件保存天数，超过此天数的图片将被自动清理，设为0表示禁用自动清理
+files-cleanup-days = 7              # 图片文件保存天数，超过此天数的图片将被自动清理，设为0表示禁用自动清理
 
 # 自动重启监控器设置
 [AutoRestart]
@@ -106,9 +105,9 @@ check-interval = 60                 # 检查间隔（秒）
 offline-threshold = 300             # 离线阈值（秒），超过这个时间没有状态更新就触发重启
 max-restart-attempts = 3            # 最大重启尝试次数
 restart-cooldown = 1800             # 重启冷却时间（秒），两次重启之间的最小间隔
-check-offline-trace = true         # 是否检查掉线追踪，如果为true，则仅在检测到"获取新消息失败"的日志时触发重启
-failure-count-threshold = 10       # 连续失败次数阈值，检测到达到这个次数的"获取新消息失败"时才触发重启
-reset-threshold-multiplier = 3     # 重置阈值倍数，失败计数器重置时间 = 离线阈值 * 此值
+check-offline-trace = true          # 是否检查掉线追踪，如果为true，则仅在检测到"获取新消息失败"的日志时触发重启
+failure-count-threshold = 10        # 连续失败次数阈值，检测到达到这个次数的"获取新消息失败"时才触发重启
+reset-threshold-multiplier = 3      # 重置阈值倍数，失败计数器重置时间 = 离线阈值 * 此值
 
 # 消息过滤设置
 ignore-mode = "None"            # 消息处理模式：

@@ -239,12 +239,12 @@ class ToolMsgForwarder(PluginBase):
                 if not matched:
                     logger.info(f"[ToolMsgForwarder] 文本消息未匹配规则过滤正则，跳过该规则: {original_content}")
                     continue
-            
+
             # XML消息过滤：如规则配置了xml_filter_title、xml_filter_des或xml_filter_url，只有匹配正则的XML才转发
             if msg_type == "xml":
                 import re
                 matched = True  # 默认为匹配，如果没有任何过滤条件，则全部转发
-                
+
                 # 检查标题过滤
                 if rule.get("xml_filter_title") and message.get("xml_title"):
                     title_matched = False
@@ -258,7 +258,7 @@ class ToolMsgForwarder(PluginBase):
                     if not title_matched:
                         logger.info(f"[ToolMsgForwarder] XML消息标题未匹配规则过滤正则，跳过该规则: {message['xml_title']}")
                         matched = False
-                
+
                 # 检查描述过滤
                 if matched and rule.get("xml_filter_des") and message.get("xml_des"):
                     des_matched = False
@@ -272,7 +272,7 @@ class ToolMsgForwarder(PluginBase):
                     if not des_matched:
                         logger.info(f"[ToolMsgForwarder] XML消息描述未匹配规则过滤正则，跳过该规则: {message['xml_des']}")
                         matched = False
-                
+
                 # 检查URL过滤
                 if matched and rule.get("xml_filter_url") and message.get("xml_url"):
                     url_matched = False
@@ -286,7 +286,7 @@ class ToolMsgForwarder(PluginBase):
                     if not url_matched:
                         logger.info(f"[ToolMsgForwarder] XML消息URL未匹配规则过滤正则，跳过该规则: {message['xml_url']}")
                         matched = False
-                
+
                 # 如果有任何一项过滤条件未匹配，则跳过该规则
                 if not matched:
                     continue
@@ -358,7 +358,7 @@ class ToolMsgForwarder(PluginBase):
                 if msg_type == "text":
                     await bot.send_text_message(target_wxid, content_to_send)
                 elif msg_type == "xml":
-                    await bot.send_link_message(target_wxid, content_to_send,message["xml_title"],message["xml_des"])
+                    await bot.send_link_message(target_wxid, content_to_send, message["xml_title"], message["xml_des"])
                 elif msg_type == "image":
                     await bot.send_image_message(target_wxid, content_to_send)
                 elif msg_type == "file":
@@ -398,29 +398,18 @@ class ToolMsgForwarder(PluginBase):
                     url = url_elem.text or ""
 
                     if url:
-                        logger.info(f"[ToolMsgForwarder] 从XML提取到信息: 标题={title}, URL={url}")
-
-                        # 检查是否需要转链
-                        has_match, match_type = self._check_for_matches(url)
-                        converted_url = url
-
-                        # 如果启用了转链且匹配到链接
-                        if has_match and self.rebate_config.get("enable", False):
-                            logger.info(f"[ToolMsgForwarder] 检测到{match_type}，尝试转链")
-                            # converted_url = self._convert_link(url)
-                            converted_url = url
-                            if converted_url and converted_url != url:
-                                logger.info(f"[ToolMsgForwarder] 转链成功")
-
+                        logger.info(f"[ToolMsgForwarder] 从XML提取到信息: 标题={title}, 描述={description}, URL={url}")
                         message["xml_title"] = title
                         message["xml_des"] = description
-                        message["xml_url"] = converted_url
+                        message["xml_url"] = url
                         return await self._process_forwarding(bot, message, msg_type="xml")
+                    else:
+                        logger.error(f"[ToolMsgForwarder] 从XML提取到信息: 标题={title}, 描述={description}, URL={url}，URL为空")
+                        return False
 
         except Exception as e:
             logger.error(f"[ToolMsgForwarder] 提取XML内容时出错: {e}")
-        # 转链失败或异常，原样xml转发
-        return await self._process_forwarding(bot, message, msg_type="xml")
+        return False
 
     @on_image_message(priority=99)
     async def handle_image_forward(self, bot, message: dict):
@@ -479,8 +468,8 @@ class ToolMsgForwarder(PluginBase):
                     if result.get("status") == 200:
                         return result.get("content", "")
                     else:
-                        logger.error(f"[ToolMsgForwarder] 转链失败: {result.get('status')}, 消息: {result.get('content', '')}")
-                        return text  # 转链失败，返回原文
+                        logger.error(f"[ToolMsgForwarder] 转链失败，返回原文: {result.get('status')}, 消息: {result.get('content', '')}")
+                        return text
                 except json.JSONDecodeError:
                     logger.error(f"[ToolMsgForwarder] 响应解析失败")
                     return text
@@ -490,5 +479,3 @@ class ToolMsgForwarder(PluginBase):
         except Exception as e:
             logger.error(f"[ToolMsgForwarder] 批量转链时发生错误: {e}")
             return text
-
-
